@@ -65,6 +65,7 @@
     }
   }
 
+  // ---------- render ----------
   async function renderFiles() {
     const files = await (await api("/api/files")).json();
     const container = document.getElementById("fileList");
@@ -73,7 +74,7 @@
       const div = document.createElement("div");
       div.className = "file-row";
       div.innerHTML =
-        '<div class="meta"><span class="name">' + f.proveedor + "</span>" +
+        '<div class="meta"><span class="name file-name-link" data-proveedor="' + esc(f.proveedor) + '" style="cursor:pointer; text-decoration:underline; text-decoration-style:dotted;">' + f.proveedor + "</span>" +
         '<span class="sub">' + f.name + " · Semana " + f.semana + " · " + f.n_productos + " productos</span></div>";
       const btn = document.createElement("button");
       btn.className = "btn-ghost";
@@ -83,6 +84,24 @@
       container.appendChild(div);
     });
   }
+
+  async function goToPorProveedor(proveedor) {
+    document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.remove("active"));
+    document.querySelector('nav.tabs button[data-tab="por-proveedor"]').classList.add("active");
+    ["cargar", "comparativo", "alertas", "por-proveedor"].forEach((t) => {
+      document.getElementById("tab-" + t).style.display = t === "por-proveedor" ? "block" : "none";
+    });
+    await loadProveedoresSelect();
+    const select = document.getElementById("porProveedorSelect");
+    select.value = proveedor;
+    await renderPorProveedor(proveedor);
+    document.getElementById("tab-por-proveedor").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest(".file-name-link[data-proveedor]");
+    if (link) goToPorProveedor(link.dataset.proveedor);
+  });
 
   async function renderComparativo(filterText) {
     const rows = await (await api("/api/comparativo")).json();
