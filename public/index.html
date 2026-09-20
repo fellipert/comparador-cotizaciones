@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comparador de Cotizaciones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">🥬</div>
+      <div>
+        <h1>Comparador de Cotizaciones</h1>
+        <p class="subtitle">Fruver Mercaldas — datos guardados en el servidor</p>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn-secondary" id="btnClear">Borrar todos los datos</button>
+      <button class="btn-primary" id="btnExport" disabled>⬇ Descargar Excel</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="cargar" class="active">Cargar cotizaciones</button>
+    <button data-tab="comparativo">Comparativo <span class="count" id="countComparativo">0</span></button>
+    <button data-tab="alertas">Alertas <span class="count" id="countAlertas">0</span></button>
+    <button data-tab="proveedores">Proveedores</button>
+    <button data-tab="por-proveedor">Por Proveedor</button>
+    <button data-tab="dashboard">Dashboard</button>
+  </nav>
+
+  <section id="tab-cargar">
+    <div class="card">
+      <div class="dropzone" id="dropzone">
+        <div class="icon">📄</div>
+        <h3>Arrastra aquí los archivos Excel de tus proveedores</h3>
+        <p>o haz clic para seleccionarlos — puedes subir varios a la vez (.xlsx)</p>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none">
+      </div>
+      <div id="fileList"></div>
+    </div>
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <p class="section-title" style="margin:0;">Llenar manualmente</p>
+        <button class="btn-secondary" id="btnToggleManual">Abrir formulario</button>
+      </div>
+      <div id="manualForm" style="display:none; margin-top:16px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+          <div>
+            <label style="font-size:0.8rem; color:var(--ink-soft); font-weight:600;">Proveedor</label>
+            <input type="text" id="manualProveedor" placeholder="Nombre del proveedor" style="width:100%; margin-top:4px;">
+          </div>
+          <div>
+            <label style="font-size:0.8rem; color:var(--ink-soft); font-weight:600;">Semana</label>
+            <input type="text" id="manualSemana" placeholder="Ej: 22" style="width:100%; margin-top:4px;">
+          </div>
+        </div>
+        <div style="position:relative; margin-bottom:14px;">
+          <label style="font-size:0.8rem; color:var(--ink-soft); font-weight:600;">Buscar producto (por código o nombre)</label>
+          <input type="text" id="catalogoSearch" placeholder="Ej: acelga, o 14721…" style="width:100%; margin-top:4px;" autocomplete="off">
+          <div id="catalogoResults" class="catalogo-dropdown" style="display:none;"></div>
+        </div>
+        <div class="table-scroll">
+          <table id="manualTable">
+            <thead><tr>
+              <th>Código</th><th>Producto</th><th>Presentación</th><th>Disponibilidad</th><th>Precio</th><th>Observación</th><th></th>
+            </tr></thead>
+            <tbody id="manualBody"></tbody>
+          </table>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <button class="btn-secondary" id="btnAddRow">+ Agregar fila</button>
+          <button class="btn-primary" id="btnSaveManual">Guardar cotización</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="uploadAlertsCard" style="display:none;">
+      <p class="section-title">⚠ Alertas de esta carga</p>
+      <div id="uploadAlerts"></div>
+    </div>
+    <div class="card">
+      <p class="section-title">Contrapropuesta</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        % que se descuenta al precio más bajo para negociar. Ajústalo entre 1.5% y 2%
+        (más adelante esto se ajustará solo según la calificación del proveedor).
+      </p>
+      <div style="display:flex; align-items:center; gap:14px; margin-top:10px;">
+        <input type="range" id="pctSlider" min="1.5" max="2" step="0.1" style="flex:1">
+        <span id="pctValue" style="font-family:'IBM Plex Mono',monospace; font-weight:600; min-width:48px;">2.0%</span>
+        <button class="btn-primary" id="btnSavePct">Guardar</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-comparativo" style="display:none">
+    <div class="card">
+      <div class="search-row">
+        <input type="text" id="searchBox" placeholder="Buscar producto o código…">
+        <span class="legend">
+          <span><span class="dot" style="background:var(--best)"></span>Mejor precio</span>
+          <span><span class="dot" style="background:var(--second)"></span>Segundo mejor</span>
+          <span><span class="dot" style="background:var(--warn)"></span>Diferencia &gt; 15%</span>
+        </span>
+      </div>
+      <div class="table-scroll">
+        <table id="comparativoTable">
+          <thead><tr>
+            <th>Código</th><th>Producto</th><th>Presentación</th><th>N° Prov.</th>
+            <th>Precio Mínimo</th><th>Proveedor</th><th>2° Mejor</th><th>Proveedor 2°</th>
+            <th>Precio Máximo</th><th>Dif. %</th><th>Contrapropuesta -2%</th><th>Redondeada (centenas)</th><th>Vigencia</th>
+          </tr></thead>
+          <tbody id="comparativoBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-alertas" style="display:none">
+    <div class="card">
+      <p class="section-title">⚠ Diferencias importantes de precio</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">Productos donde el precio más alto supera al más bajo en más de 15%.</p>
+      <div id="alertasDiferencias"></div>
+    </div>
+    <div class="card">
+      <p class="section-title">⏰ Vigencias por vencer</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">Cotizaciones cuya vigencia vence hoy o ya venció.</p>
+      <div id="alertasVigencias"></div>
+    </div>
+  </section>
+
+  <section id="tab-proveedores" style="display:none">
+    <div class="card">
+      <p class="section-title">Agrupamiento de proveedores por portafolio similar</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        Dos proveedores quedan en el mismo grupo si los productos que tienen en común representan
+        al menos este % del portafolio de alguno de los dos (útil para saber quién podría sustituir a quién).
+      </p>
+      <div style="display:flex; align-items:center; gap:14px; margin-top:10px;">
+        <input type="range" id="umbralSlider" min="1" max="100" step="1" value="10" style="flex:1">
+        <span id="umbralValue" style="font-family:'IBM Plex Mono',monospace; font-weight:600; min-width:44px;">10%</span>
+      </div>
+    </div>
+    <div class="card">
+      <p class="section-title">Grupos detectados</p>
+      <div id="gruposProveedores"></div>
+    </div>
+    <div class="card">
+      <p class="section-title">Detalle: coincidencia de portafolio por pareja de proveedores</p>
+      <div class="table-scroll">
+        <table id="paresTable">
+          <thead><tr>
+            <th>Proveedor A</th><th>Proveedor B</th><th>Productos en común</th>
+            <th>% del portafolio de A</th><th>% del portafolio de B</th><th>¿Agrupados?</th>
+          </tr></thead>
+          <tbody id="paresBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-por-proveedor" style="display:none">
+    <div class="card">
+      <p class="section-title">Contrapropuesta consolidada por proveedor</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        Elige un proveedor para ver todos los productos que te cotiza, comparados contra el precio
+        más bajo del mercado para cada uno, listo para negociar el pedido.
+      </p>
+      <div style="margin-top:12px;">
+        <select id="porProveedorSelect" class="manual-input" style="max-width:340px;">
+          <option value="">Selecciona un proveedor…</option>
+        </select>
+      </div>
+    </div>
+    <div class="card" id="porProveedorCard" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <p class="section-title" style="margin:0;" id="porProveedorTitulo"></p>
+        <div style="display:flex; gap:10px;">
+          <button class="btn-secondary" id="btnAbrirAgregarProducto">+ Agregar producto al proveedor</button>
+          <button class="btn-primary" id="btnExportPorProveedor">⬇ Descargar contrapropuesta (Excel)</button>
+        </div>
+      </div>
+      <div class="legend" style="margin:10px 0;">
+        <span><span class="dot" style="background:var(--best)"></span>Es el más barato del mercado</span>
+        <span><span class="dot" style="background:var(--warn)"></span>Proveedor único (nadie más lo cotiza)</span>
+      </div>
+      <div class="table-scroll">
+        <table id="porProveedorTable">
+          <thead><tr>
+            <th>Código</th><th>Producto</th><th>Presentación</th><th>Precio de este proveedor</th>
+            <th>Mín. proveedor</th><th>Precio mínimo del mercado</th><th>Proveedor mínimo</th>
+            <th>Contrapropuesta sugerida</th><th>Tipo</th><th>Estado</th><th>Acciones</th>
+          </tr></thead>
+          <tbody id="porProveedorBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div id="agregarProductoOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <p class="section-title" style="margin:0;" id="agpModalTitulo">Agregar producto al proveedor</p>
+        <button class="btn-ghost" id="btnCerrarAgregarProducto" style="font-size:1.1rem;">✕</button>
+      </div>
+
+      <div id="pasoBuscar">
+        <p style="font-size:0.85rem; color:var(--ink-soft); margin-top:6px;">
+          Busca por código, PLU, nombre o presentación. Si no existe, podrás crearlo.
+        </p>
+        <input type="text" id="agpBuscar" placeholder="Ej: mango, 99999, kilo…" style="width:100%; margin-top:8px;" autocomplete="off">
+        <div id="agpResultados" style="margin-top:10px; max-height:220px; overflow-y:auto;"></div>
+        <button class="btn-secondary" id="btnIrACrear" style="margin-top:14px; width:100%;">No está en el catálogo — crear producto nuevo</button>
+      </div>
+
+      <div id="pasoCrear" style="display:none;">
+        <p style="font-size:0.85rem; color:var(--ink-soft); margin-top:6px;">Crea el producto en el catálogo general.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+          <div>
+            <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Código / PLU</label>
+            <input type="text" id="agpNuevoCodigo" style="width:100%; margin-top:4px;">
+          </div>
+          <div>
+            <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Presentación</label>
+            <input type="text" id="agpNuevaPresentacion" style="width:100%; margin-top:4px;">
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Nombre del producto</label>
+          <input type="text" id="agpNuevoNombre" style="width:100%; margin-top:4px;">
+        </div>
+        <div style="display:flex; gap:10px; margin-top:14px;">
+          <button class="btn-secondary" id="btnVolverABuscar">‹ Volver a buscar</button>
+          <button class="btn-primary" id="btnCrearYContinuar" style="flex:1;">Crear producto</button>
+        </div>
+      </div>
+
+      <div id="pasoTipo" style="display:none;">
+        <p style="font-size:0.9rem; margin-top:10px;"><strong id="agpProductoElegidoNombre"></strong></p>
+
+        <div style="margin-top:10px;">
+          <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Presentación</label>
+          <input type="text" id="agpEditPresentacion" style="width:100%; margin-top:4px;">
+        </div>
+
+        <div style="margin-top:10px;">
+          <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Precio de este proveedor</label>
+          <input type="number" min="0" id="agpEditPrecio" placeholder="Ej: 2400 (opcional)" style="width:100%; margin-top:4px;">
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:10px;">
+          <div>
+            <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Mínimo histórico proveedor</label>
+            <input type="text" id="agpRefMinimoProveedor" disabled style="width:100%; margin-top:4px; opacity:0.75;">
+          </div>
+          <div>
+            <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Precio mínimo de mercado</label>
+            <input type="text" id="agpRefMinimo" disabled style="width:100%; margin-top:4px; opacity:0.75;">
+          </div>
+          <div>
+            <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Proveedor del mínimo</label>
+            <input type="text" id="agpRefProveedor" disabled style="width:100%; margin-top:4px; opacity:0.75;">
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Contrapropuesta (sugerida: -2% del mínimo de mercado, editable)</label>
+          <input type="number" min="0" id="agpEditContrapropuesta" style="width:100%; margin-top:4px;">
+        </div>
+
+        <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600; display:block; margin-top:12px;">¿Es un producto habitual o adicional para este proveedor?</label>
+        <div style="display:flex; gap:14px; margin-top:8px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.88rem;">
+            <input type="radio" name="agpTipo" value="habitual" checked> Habitual
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.88rem;">
+            <input type="radio" name="agpTipo" value="adicional"> Adicional
+          </label>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button class="btn-secondary" id="btnVolverABuscarDesdeTipo">‹ Elegir otro producto</button>
+          <button class="btn-primary" id="btnConfirmarAsociar" style="flex:1;">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section id="tab-dashboard" style="display:none">
+    <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="two-col">
+      <div class="card">
+        <p class="section-title">Precio promedio cotizado por proveedor</p>
+        <div class="bars" id="barsPromedio"></div>
+      </div>
+      <div class="card">
+        <p class="section-title">% diferencia promedio vs. mejor precio</p>
+        <div class="bars" id="barsDiferencia"></div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="section-title">Productos ganados por proveedor (mejor precio)</p>
+      <div class="bars" id="barsGanados"></div>
+    </div>
+  </section>
+</div>
+<div id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
+

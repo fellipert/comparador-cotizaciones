@@ -1,0 +1,17 @@
+{
+  "name": "comparador-cotizaciones",
+  "version": "1.0.0",
+  "description": "Comparador de cotizaciones de proveedores con base de datos, para el Fruver Mercaldas",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.19.2",
+    "multer": "^2.0.1",
+    "xlsx": "^0.18.5"
+  }
+}
+
