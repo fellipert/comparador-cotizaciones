@@ -119,40 +119,6 @@
     }).join("");
   }
 
-  async function renderDashboard() {
-    const d = await (await api("/api/dashboard")).json();
-    const kpis = [
-      { label: "Total de productos cotizados", value: d.totalProductos },
-      { label: "Productos con más de 1 proveedor", value: d.conVarios },
-      { label: "Ahorro potencial (máx. vs. mín.)", value: fmtMoney(d.ahorroPotencial) },
-      { label: "Ahorro adicional por contrapropuesta -2%", value: fmtMoney(d.ahorroContrapropuesta) },
-    ];
-    document.getElementById("kpiGrid").innerHTML = kpis.map((k) =>
-      '<div class="kpi"><div class="label">' + k.label + '</div><div class="value">' + k.value + "</div></div>"
-    ).join("");
-
-    const maxPrecio = Math.max(1, ...d.proveedores.map((p) => p.avgPrecio));
-    document.getElementById("barsPromedio").innerHTML = d.proveedores.length ? d.proveedores.map((p) =>
-      '<div class="bar-row"><div class="name">' + p.proveedor + '</div>' +
-      '<div class="bar-track"><div class="bar-fill" style="width:' + (p.avgPrecio / maxPrecio * 100) + '%"></div></div>' +
-      '<div class="val">' + fmtMoney(p.avgPrecio) + "</div></div>"
-    ).join("") : '<p style="color:var(--ink-soft);font-size:0.85rem">Sin datos todavía.</p>';
-
-    const maxDiff = Math.max(0.01, ...d.proveedores.map((p) => p.avgDiff));
-    document.getElementById("barsDiferencia").innerHTML = d.proveedores.length ? d.proveedores.map((p) =>
-      '<div class="bar-row"><div class="name">' + p.proveedor + '</div>' +
-      '<div class="bar-track"><div class="bar-fill" style="width:' + (p.avgDiff / maxDiff * 100) + '%;background:var(--second)"></div></div>' +
-      '<div class="val">' + fmtPct(p.avgDiff) + "</div></div>"
-    ).join("") : '<p style="color:var(--ink-soft);font-size:0.85rem">Sin datos todavía.</p>';
-
-    const maxVict = Math.max(1, ...d.proveedores.map((p) => p.victorias));
-    document.getElementById("barsGanados").innerHTML = d.proveedores.length ? d.proveedores.map((p) =>
-      '<div class="bar-row"><div class="name">' + p.proveedor + '</div>' +
-      '<div class="bar-track"><div class="bar-fill" style="width:' + (p.victorias / maxVict * 100) + '%;background:var(--best)"></div></div>' +
-      '<div class="val">' + p.victorias + "</div></div>"
-    ).join("") : '<p style="color:var(--ink-soft);font-size:0.85rem">Sin datos todavía.</p>';
-  }
-
   function buildAlertRowsHTML(a) {
     let html = "";
     if (a.diferenciasImportantes.length) {
@@ -177,7 +143,7 @@
   function goToComparativo(codigo) {
     document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.remove("active"));
     document.querySelector('nav.tabs button[data-tab="comparativo"]').classList.add("active");
-    ["cargar", "comparativo", "alertas", "proveedores", "por-proveedor", "dashboard"].forEach((t) => {
+    ["cargar", "comparativo", "alertas", "por-proveedor"].forEach((t) => {
       document.getElementById("tab-" + t).style.display = t === "comparativo" ? "block" : "none";
     });
     const box = document.getElementById("searchBox");
@@ -245,66 +211,7 @@
       : '<p class="empty-alert">No hay vigencias por vencer hoy.</p>';
   }
 
-  let umbralActual = 10;
-  async function renderAgrupamiento() {
-    const data = await (await api("/api/agrupamiento?umbral=" + umbralActual)).json();
-
-    const gruposEl = document.getElementById("gruposProveedores");
-    const gruposReales = data.grupos.filter((g) => g.tamano > 1);
-    const sueltos = data.grupos.filter((g) => g.tamano === 1);
-    let html = "";
-    gruposReales.forEach((g, i) => {
-      html += '<div class="alert-row" style="background:var(--brand-tint); cursor:default;">' +
-        '<div><div class="a-name">Grupo ' + (i + 1) + '</div>' +
-        '<div class="a-sub">' + g.miembros.join(" · ") + '</div></div>' +
-        '<div class="a-val">' + g.tamano + ' proveedores</div></div>';
-    });
-    if (sueltos.length) {
-      html += '<p style="color:var(--ink-soft); font-size:0.82rem; margin-top:14px;">Sin coincidencias suficientes: ' +
-        sueltos.map((g) => g.miembros[0]).join(", ") + '</p>';
-    }
-    gruposEl.innerHTML = html || '<p class="empty-alert">Sube cotizaciones de al menos 2 proveedores para ver agrupamientos.</p>';
-
-    const tbody = document.getElementById("paresBody");
-    tbody.innerHTML = data.pares.length ? data.pares.map((p, i) => {
-      const cls = p.conectados ? ' class="cell-best"' : "";
-      const productosHtml = p.codigosComunes.length
-        ? '<table style="width:100%;font-size:0.8rem;"><thead><tr><th style="text-align:left;padding:4px 8px;">Producto</th><th style="text-align:right;padding:4px 8px;">' +
-          p.proveedorA + '</th><th style="text-align:right;padding:4px 8px;">' + p.proveedorB + '</th></tr></thead><tbody>' +
-          p.codigosComunes.map((c) => {
-            const menorA = c.precioA < c.precioB ? ' style="font-weight:700;color:var(--best)"' : "";
-            const menorB = c.precioB < c.precioA ? ' style="font-weight:700;color:var(--best)"' : "";
-            return "<tr><td style=\"padding:4px 8px;\">" + c.producto + " (" + c.codigo + ")</td>" +
-              "<td" + menorA + " style=\"text-align:right;padding:4px 8px;\">" + fmtMoney(c.precioA) + "</td>" +
-              "<td" + menorB + " style=\"text-align:right;padding:4px 8px;\">" + fmtMoney(c.precioB) + "</td></tr>";
-          }).join("") + "</tbody></table>"
-        : "Ninguno en común.";
-      return "<tr>" +
-        "<td>" + p.proveedorA + "</td>" +
-        "<td>" + p.proveedorB + "</td>" +
-        "<td>" + p.comunes + (p.comunes > 0
-          ? ' <button class="btn-ghost" type="button" style="color:var(--brand);" data-toggle-productos="' + i + '">ver ›</button>'
-          : "") + "</td>" +
-        "<td" + cls + ">" + p.pctA.toFixed(1) + "% (de " + p.totalA + ")</td>" +
-        "<td" + cls + ">" + p.pctB.toFixed(1) + "% (de " + p.totalB + ")</td>" +
-        "<td>" + (p.conectados ? "✓ Sí" : "—") + "</td>" +
-        "</tr>" +
-        '<tr class="productos-comunes-row" id="productos-comunes-' + i + '" style="display:none;">' +
-        '<td colspan="6" style="white-space:normal; background:var(--brand-tint); font-size:0.82rem;">' + productosHtml + "</td></tr>";
-    }).join("") : '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink-soft)">Necesitas al menos 2 proveedores con cotizaciones.</td></tr>';
-    tbody.querySelectorAll("[data-toggle-productos]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const row = document.getElementById("productos-comunes-" + btn.dataset.toggleProductos);
-        row.style.display = row.style.display === "none" ? "table-row" : "none";
-      });
-    });
-  }
-  document.getElementById("umbralSlider").addEventListener("input", async (e) => {
-    umbralActual = Number(e.target.value);
-    document.getElementById("umbralValue").textContent = umbralActual + "%";
-    await renderAgrupamiento();
-  });
-
+  // ---------- configuración: % de contrapropuesta ----------
   async function loadSettings() {
     const s = await (await api("/api/settings")).json();
     document.getElementById("pctSlider").value = s.contrapropuestaPct;
@@ -328,6 +235,7 @@
     }
   });
 
+  // ---------- llenado manual ----------
   let manualRowCount = 0;
   function esc(v) { return (v || "").toString().replace(/"/g, "&quot;"); }
 
@@ -412,6 +320,7 @@
     }
   });
 
+  // ---------- buscador del catálogo (autocompletar código + producto) ----------
   let catalogoDebounce = null;
   const catalogoSearch = document.getElementById("catalogoSearch");
   const catalogoResults = document.getElementById("catalogoResults");
@@ -470,13 +379,10 @@
     if (nombres.includes(actual)) select.value = actual;
   }
 
-  let porProveedorItemsActuales = [];
-
   async function renderPorProveedor(proveedor) {
     const card = document.getElementById("porProveedorCard");
     if (!proveedor) { card.style.display = "none"; return; }
     const data = await (await api("/api/por-proveedor?proveedor=" + encodeURIComponent(proveedor))).json();
-    porProveedorItemsActuales = data.items || [];
     document.getElementById("porProveedorTitulo").textContent = "Productos de " + data.proveedor + " (" + data.items.length + ")";
     const tbody = document.getElementById("porProveedorBody");
     tbody.innerHTML = data.items.length ? data.items.map((it) => {
@@ -494,18 +400,13 @@
         "<td>" + it.producto + "</td>" +
         "<td>" + it.presentacion + "</td>" +
         "<td" + filaCls + "><strong>" + precioTxt + "</strong></td>" +
-        "<td>" + fmtMoney(it.precioMinimoProveedor) + "</td>" +
         "<td>" + fmtMoney(it.precioMinimo) + "</td>" +
         "<td>" + (it.proveedorMinimo || "—") + "</td>" +
         "<td><strong>" + contraTxt + "</strong></td>" +
         "<td>" + tipoTxt + "</td>" +
         "<td>" + estado + "</td>" +
-        '<td><div style="display:flex;gap:6px;white-space:nowrap;">' +
-          '<button class="btn-secondary btn-editar-proveedor" data-codigo="' + esc(it.codigo) + '">✏ Editar</button>' +
-          '<button class="btn-ghost btn-eliminar-proveedor" data-codigo="' + esc(it.codigo) + '">🗑 Eliminar</button>' +
-        "</div></td>" +
         "</tr>";
-    }).join("") : '<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--ink-soft)">Este proveedor no tiene productos cotizados.</td></tr>';
+    }).join("") : '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--ink-soft)">Este proveedor no tiene productos cotizados.</td></tr>';
     card.style.display = "block";
   }
 
@@ -518,71 +419,8 @@
     window.location.href = "/api/por-proveedor/export?proveedor=" + encodeURIComponent(proveedor);
   });
 
-  // ---------- editar / eliminar desde la tabla ----------
-  document.getElementById("porProveedorBody").addEventListener("click", async (e) => {
-    const btnEditar = e.target.closest(".btn-editar-proveedor");
-    const btnEliminar = e.target.closest(".btn-eliminar-proveedor");
-
-    if (!btnEditar && !btnEliminar) return;
-
-    const boton = btnEditar || btnEliminar;
-    const codigo = boton.dataset.codigo;
-    const proveedor = document.getElementById("porProveedorSelect").value;
-
-    const item = porProveedorItemsActuales.find(
-      (x) => String(x.codigo) === String(codigo)
-    );
-
-    if (!item) {
-      toast("No se encontró el producto seleccionado.");
-      return;
-    }
-
-    if (btnEditar) {
-      agpProductoElegido = {
-        codigo: item.codigo,
-        producto: item.producto,
-        presentacion: item.presentacion
-      };
-
-      document.getElementById("agregarProductoOverlay").style.display = "flex";
-      await agpAbrirPasoTipo(item);
-      return;
-    }
-
-    if (btnEliminar) {
-      const confirmar = window.confirm(
-        "¿Deseas quitar " +
-        item.producto +
-        " de " +
-        proveedor +
-        "?\n\nEl historial de cotizaciones NO se eliminará."
-      );
-
-      if (!confirmar) return;
-
-      try {
-        await api("/api/proveedor-productos/quitar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            proveedor,
-            codigo: item.codigo
-          })
-        });
-
-        toast(item.producto + " fue retirado de " + proveedor + ".");
-        await renderPorProveedor(proveedor);
-      } catch (err) {
-        toast("No se pudo quitar el producto: " + err.message);
-      }
-    }
-  });
-
-  // ---------- modal: agregar / editar producto del proveedor ----------
+  // ---------- modal: agregar producto al proveedor ----------
   let agpProductoElegido = null;
-  let agpModoEdicion = false;
-  let agpPrecioOriginal = null;
 
   function agpMostrarPaso(paso) {
     document.getElementById("pasoBuscar").style.display = paso === "buscar" ? "block" : "none";
@@ -593,12 +431,6 @@
   function agpAbrir() {
     const proveedor = document.getElementById("porProveedorSelect").value;
     if (!proveedor) { toast("Primero selecciona un proveedor."); return; }
-
-    agpModoEdicion = false;
-    agpPrecioOriginal = null;
-    document.getElementById("agpModalTitulo").textContent = "Agregar producto al proveedor";
-    document.getElementById("btnConfirmarAsociar").textContent = "Guardar";
-
     agpProductoElegido = null;
     document.getElementById("agpBuscar").value = "";
     document.getElementById("agpResultados").innerHTML = "";
@@ -670,77 +502,24 @@
     }
   });
 
-  async function agpAbrirPasoTipo(itemExistente = null) {
-    const esEdicion = !!itemExistente;
-
-    if (esEdicion) {
-      agpModoEdicion = true;
-      agpPrecioOriginal = itemExistente.precioProveedor;
-
-      document.getElementById("agpModalTitulo").textContent = "Editar producto del proveedor";
-      document.getElementById("btnConfirmarAsociar").textContent = "Guardar cambios";
-    }
-
-    document.getElementById("agpProductoElegidoNombre").textContent =
-      agpProductoElegido.producto + " (" + agpProductoElegido.codigo + ")";
-
-    document.getElementById("agpEditPresentacion").value =
-      itemExistente?.presentacion || agpProductoElegido.presentacion || "";
-
-    document.getElementById("agpEditPrecio").value =
-      itemExistente?.precioProveedor ?? "";
-
-    document.getElementById("agpRefMinimoProveedor").value =
-      itemExistente?.precioMinimoProveedor != null
-        ? fmtMoney(itemExistente.precioMinimoProveedor)
-        : "—";
-
+  async function agpAbrirPasoTipo() {
+    document.getElementById("agpProductoElegidoNombre").textContent = agpProductoElegido.producto + " (" + agpProductoElegido.codigo + ")";
+    document.getElementById("agpEditPresentacion").value = agpProductoElegido.presentacion || "";
+    document.getElementById("agpEditPrecio").value = "";
     document.getElementById("agpRefMinimo").value = "Consultando…";
     document.getElementById("agpRefProveedor").value = "—";
-
-    document.getElementById("agpEditContrapropuesta").value =
-      itemExistente?.contrapropuestaEsManual
-        ? itemExistente.redondeada
-        : "";
-
-    const tipoActual = itemExistente?.tipo || "habitual";
-    const radioTipo = document.querySelector(
-      'input[name="agpTipo"][value="' + tipoActual + '"]'
-    );
-    if (radioTipo) radioTipo.checked = true;
-
+    document.getElementById("agpEditContrapropuesta").value = "";
     agpMostrarPaso("tipo");
 
     try {
-      const ref = await (
-        await api(
-          "/api/producto-referencia?codigo=" +
-          encodeURIComponent(agpProductoElegido.codigo)
-        )
-      ).json();
-
-      document.getElementById("agpRefMinimo").value =
-        ref.precioMinimo !== null
-          ? fmtMoney(ref.precioMinimo) +
-            " (" +
-            ref.nProveedores +
-            " proveedor" +
-            (ref.nProveedores === 1 ? "" : "es") +
-            ")"
-          : "Sin cotizaciones todavía";
-
-      document.getElementById("agpRefProveedor").value =
-        ref.proveedorMinimo || "—";
-
-      if (!itemExistente?.contrapropuestaEsManual) {
-        document.getElementById("agpEditContrapropuesta").value =
-          ref.contrapropuestaSugerida !== null
-            ? ref.contrapropuestaSugerida
-            : "";
-      }
+      const ref = await (await api("/api/producto-referencia?codigo=" + encodeURIComponent(agpProductoElegido.codigo))).json();
+      document.getElementById("agpRefMinimo").value = ref.precioMinimo !== null
+        ? fmtMoney(ref.precioMinimo) + " (" + ref.nProveedores + " proveedor" + (ref.nProveedores === 1 ? "" : "es") + ")"
+        : "Sin cotizaciones todavía";
+      document.getElementById("agpRefProveedor").value = ref.proveedorMinimo || "—";
+      document.getElementById("agpEditContrapropuesta").value = ref.contrapropuestaSugerida !== null ? ref.contrapropuestaSugerida : "";
     } catch (err) {
-      document.getElementById("agpRefMinimo").value =
-        "No se pudo consultar";
+      document.getElementById("agpRefMinimo").value = "No se pudo consultar";
     }
   }
 
@@ -749,19 +528,8 @@
     const proveedor = document.getElementById("porProveedorSelect").value;
     const tipo = document.querySelector('input[name="agpTipo"]:checked').value;
     const presentacion = document.getElementById("agpEditPresentacion").value.trim();
-    let precio = document.getElementById("agpEditPrecio").value;
+    const precio = document.getElementById("agpEditPrecio").value;
     const contrapropuesta = document.getElementById("agpEditContrapropuesta").value;
-
-    // Si estamos editando y el precio sigue igual, no crear otra cotización histórica.
-    if (
-      agpModoEdicion &&
-      precio !== "" &&
-      agpPrecioOriginal !== null &&
-      Number(precio) === Number(agpPrecioOriginal)
-    ) {
-      precio = "";
-    }
-
     try {
       await api("/api/proveedor-productos", {
         method: "POST",
@@ -781,12 +549,10 @@
     btn.addEventListener("click", async () => {
       document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      ["cargar", "comparativo", "alertas", "proveedores", "por-proveedor", "dashboard"].forEach((t) => {
+      ["cargar", "comparativo", "alertas", "por-proveedor"].forEach((t) => {
         document.getElementById("tab-" + t).style.display = t === btn.dataset.tab ? "block" : "none";
       });
-      if (btn.dataset.tab === "dashboard") await renderDashboard();
       if (btn.dataset.tab === "alertas") await renderAlertas();
-      if (btn.dataset.tab === "proveedores") await renderAgrupamiento();
       if (btn.dataset.tab === "por-proveedor") await loadProveedoresSelect();
     });
   });

@@ -29,9 +29,7 @@
     <button data-tab="cargar" class="active">Cargar cotizaciones</button>
     <button data-tab="comparativo">Comparativo <span class="count" id="countComparativo">0</span></button>
     <button data-tab="alertas">Alertas <span class="count" id="countAlertas">0</span></button>
-    <button data-tab="proveedores">Proveedores</button>
     <button data-tab="por-proveedor">Por Proveedor</button>
-    <button data-tab="dashboard">Dashboard</button>
   </nav>
 
   <section id="tab-cargar">
@@ -133,36 +131,6 @@
     </div>
   </section>
 
-  <section id="tab-proveedores" style="display:none">
-    <div class="card">
-      <p class="section-title">Agrupamiento de proveedores por portafolio similar</p>
-      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
-        Dos proveedores quedan en el mismo grupo si los productos que tienen en común representan
-        al menos este % del portafolio de alguno de los dos (útil para saber quién podría sustituir a quién).
-      </p>
-      <div style="display:flex; align-items:center; gap:14px; margin-top:10px;">
-        <input type="range" id="umbralSlider" min="1" max="100" step="1" value="10" style="flex:1">
-        <span id="umbralValue" style="font-family:'IBM Plex Mono',monospace; font-weight:600; min-width:44px;">10%</span>
-      </div>
-    </div>
-    <div class="card">
-      <p class="section-title">Grupos detectados</p>
-      <div id="gruposProveedores"></div>
-    </div>
-    <div class="card">
-      <p class="section-title">Detalle: coincidencia de portafolio por pareja de proveedores</p>
-      <div class="table-scroll">
-        <table id="paresTable">
-          <thead><tr>
-            <th>Proveedor A</th><th>Proveedor B</th><th>Productos en común</th>
-            <th>% del portafolio de A</th><th>% del portafolio de B</th><th>¿Agrupados?</th>
-          </tr></thead>
-          <tbody id="paresBody"></tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
   <section id="tab-por-proveedor" style="display:none">
     <div class="card">
       <p class="section-title">Contrapropuesta consolidada por proveedor</p>
@@ -192,8 +160,7 @@
         <table id="porProveedorTable">
           <thead><tr>
             <th>Código</th><th>Producto</th><th>Presentación</th><th>Precio de este proveedor</th>
-            <th>Mín. proveedor</th><th>Precio mínimo del mercado</th><th>Proveedor mínimo</th>
-            <th>Contrapropuesta sugerida</th><th>Tipo</th><th>Estado</th><th>Acciones</th>
+            <th>Precio mínimo del mercado</th><th>Proveedor mínimo</th><th>Contrapropuesta sugerida</th><th>Tipo</th><th>Estado</th>
           </tr></thead>
           <tbody id="porProveedorBody"></tbody>
         </table>
@@ -204,7 +171,7 @@
   <div id="agregarProductoOverlay" class="modal-overlay" style="display:none;">
     <div class="modal-box">
       <div style="display:flex; align-items:center; justify-content:space-between;">
-        <p class="section-title" style="margin:0;" id="agpModalTitulo">Agregar producto al proveedor</p>
+        <p class="section-title" style="margin:0;">Agregar producto al proveedor</p>
         <button class="btn-ghost" id="btnCerrarAgregarProducto" style="font-size:1.1rem;">✕</button>
       </div>
 
@@ -252,11 +219,7 @@
           <input type="number" min="0" id="agpEditPrecio" placeholder="Ej: 2400 (opcional)" style="width:100%; margin-top:4px;">
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:10px;">
-          <div>
-            <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Mínimo histórico proveedor</label>
-            <input type="text" id="agpRefMinimoProveedor" disabled style="width:100%; margin-top:4px; opacity:0.75;">
-          </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
           <div>
             <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Precio mínimo de mercado</label>
             <input type="text" id="agpRefMinimo" disabled style="width:100%; margin-top:4px; opacity:0.75;">
@@ -288,24 +251,6 @@
       </div>
     </div>
   </div>
-
-  <section id="tab-dashboard" style="display:none">
-    <div class="kpi-grid" id="kpiGrid"></div>
-    <div class="two-col">
-      <div class="card">
-        <p class="section-title">Precio promedio cotizado por proveedor</p>
-        <div class="bars" id="barsPromedio"></div>
-      </div>
-      <div class="card">
-        <p class="section-title">% diferencia promedio vs. mejor precio</p>
-        <div class="bars" id="barsDiferencia"></div>
-      </div>
-    </div>
-    <div class="card">
-      <p class="section-title">Productos ganados por proveedor (mejor precio)</p>
-      <div class="bars" id="barsGanados"></div>
-    </div>
-  </section>
 </div>
 <div id="toast"></div>
 <script src="/app.js"></script>
