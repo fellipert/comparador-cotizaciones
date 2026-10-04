@@ -135,8 +135,380 @@ function extractCatalogEntries(rows, headerRowIdx, colMap) {
   return entries;
 }
 
+
+function parseFormatoMercaldasNuevo(wb, filename) {
+
+  let hojaObjetivo = null;
+  let rows = null;
+
+  for (const nombre of wb.SheetNames) {
+
+    const filas = XLSX.utils.sheet_to_json(
+      wb.Sheets[nombre],
+      {
+        header: 1,
+        defval: null,
+        raw: true
+      }
+    );
+
+    const textoInicial = filas
+      .slice(0, 8)
+      .flat()
+      .filter(v => v !== null && v !== undefined)
+      .map(v => String(v))
+      .join(" ")
+      .toUpperCase();
+
+    if (
+      textoInicial.includes("MERCALDAS") &&
+      textoInicial.includes("COTIZACIÓN FRUVER")
+    ) {
+      hojaObjetivo = nombre;
+      rows = filas;
+      break;
+    }
+
+  }
+
+  if (!rows) {
+    return null;
+  }
+
+
+  // ===================================================
+  // METADATOS
+  // ===================================================
+
+  let proveedor = "";
+  let ciclo = "";
+  let vigenciaFin = null;
+
+  for (const row of rows.slice(0, 10)) {
+
+    for (const celda of row || []) {
+
+      if (celda === null || celda === undefined) continue;
+
+      const texto = String(celda).trim();
+
+      const mProveedor =
+        texto.match(/^Proveedor\s*:\s*(.+)$/i);
+
+      if (mProveedor) {
+        proveedor = mProveedor[1].trim().toUpperCase();
+      }
+
+      const mCiclo =
+        texto.match(/COT-\d{4}-\d{1,2}/i);
+
+      if (mCiclo) {
+        ciclo = mCiclo[0].toUpperCase();
+      }
+
+      const mVigencia =
+        texto.match(
+          /Vigencia\s*:\s*(\d{4}-\d{2}-\d{2})\s+al\s+(\d{4}-\d{2}-\d{2})/i
+        );
+
+      if (mVigencia) {
+        vigenciaFin = mVigencia[2];
+      }
+
+    }
+
+  }
+
+
+  if (!proveedor) {
+    return null;
+  }
+
+
+  // ===================================================
+  // PRODUCTOS
+  // ===================================================
+
+  const records = [];
+  const catalogo = [];
+
+  let seccion = null;
+  let columnas = null;
+
+
+  for (let i = 0; i < rows.length; i++) {
+
+    const row = rows[i] || [];
+
+    const textos = row
+      .filter(v => v !== null && v !== undefined)
+      .map(v => String(v).trim());
+
+    if (!textos.length) continue;
+
+    const textoFila =
+      textos.join(" ").toLowerCase();
+
+
+    // -----------------------------------------------
+    // Detectar sección
+    // -----------------------------------------------
+
+    if (
+      textoFila.includes(
+        "cotización habitual de productos"
+      )
+    ) {
+      seccion = "habitual";
+      columnas = null;
+      continue;
+    }
+
+    if (
+      textoFila.includes(
+        "productos de temporada"
+      ) ||
+      textoFila.includes(
+        "otras oportunidades"
+      )
+    ) {
+      seccion = "oportunidades";
+      columnas = null;
+      continue;
+    }
+
+
+    // -----------------------------------------------
+    // Detectar encabezado
+    // -----------------------------------------------
+
+    const normalizados =
+      row.map(v =>
+        v === null || v === undefined
+          ? ""
+          : norm(v)
+      );
+
+    const idxCodigo =
+      normalizados.findIndex(v =>
+        v === "PLU" ||
+        v === "CODIGO"
+      );
+
+    const idxProducto =
+      normalizados.findIndex(v =>
+        v === "PRODUCTO"
+      );
+
+    const idxPresentacion =
+      normalizados.findIndex(v =>
+        v === "PRESENTACION"
+      );
+
+    const idxPrecio =
+      normalizados.findIndex(v =>
+        v === "PRECIO OFERTADO" ||
+        v === "PRECIO"
+      );
+
+    if (
+      idxCodigo >= 0 &&
+      idxProducto >= 0 &&
+      idxPrecio >= 0
+    ) {
+
+      columnas = {
+        codigo: idxCodigo,
+        producto: idxProducto,
+        presentacion: idxPresentacion,
+        precio: idxPrecio,
+        disponibilidad:
+          normalizados.findIndex(v =>
+            v === "DISPONIBILIDAD"
+          ),
+        observacion:
+          normalizados.findIndex(v =>
+            v === "OBSERVACION"
+          ),
+        ofertar:
+          normalizados.findIndex(v =>
+            v === "OFERTAR ESTA SEMANA" ||
+            v === "OFERTAR"
+          )
+      };
+
+      continue;
+    }
+
+
+    if (!columnas || !seccion) {
+      continue;
+    }
+
+
+    // -----------------------------------------------
+    // Leer producto
+    // -----------------------------------------------
+
+    const codigo =
+      columnas.codigo >= 0
+        ? String(
+            row[columnas.codigo] ?? ""
+          ).trim()
+        : "";
+
+    if (!codigo) continue;
+
+
+    const producto =
+      columnas.producto >= 0
+        ? String(
+            row[columnas.producto] ?? ""
+          ).trim()
+        : "";
+
+    const presentacion =
+      columnas.presentacion >= 0
+        ? String(
+            row[columnas.presentacion] ?? ""
+          ).trim()
+        : "";
+
+
+    // Siempre alimentamos catálogo
+    catalogo.push({
+      codigo,
+      producto,
+      presentacion
+    });
+
+
+    // -----------------------------------------------
+    // Oportunidades: SOLO cuando diga SI
+    // -----------------------------------------------
+
+    if (seccion === "oportunidades") {
+
+      const ofertar =
+        columnas.ofertar >= 0
+          ? norm(
+              row[columnas.ofertar] ?? ""
+            )
+          : "";
+
+      const si =
+        [
+          "SI",
+          "S",
+          "YES",
+          "1"
+        ].includes(ofertar);
+
+      if (!si) {
+        continue;
+      }
+
+    }
+
+
+    // -----------------------------------------------
+    // Precio
+    // -----------------------------------------------
+
+    const precioRaw =
+      columnas.precio >= 0
+        ? row[columnas.precio]
+        : null;
+
+    let precio =
+      typeof precioRaw === "number"
+        ? precioRaw
+        : Number(
+            String(precioRaw ?? "")
+              .replace(/\$/g, "")
+              .replace(/\s/g, "")
+              .replace(/\./g, "")
+              .replace(",", ".")
+          );
+
+    if (
+      !Number.isFinite(precio) ||
+      precio <= 0
+    ) {
+      continue;
+    }
+
+
+    const disponibilidad =
+      columnas.disponibilidad >= 0
+        ? row[columnas.disponibilidad]
+        : null;
+
+    const observacion =
+      columnas.observacion >= 0
+        ? row[columnas.observacion]
+        : null;
+
+
+    records.push({
+      codigo,
+      producto,
+      presentacion,
+      disponibilidad:
+        disponibilidad === null ||
+        disponibilidad === undefined
+          ? null
+          : String(disponibilidad).trim(),
+      precio,
+      observacion:
+        observacion === null ||
+        observacion === undefined
+          ? null
+          : String(observacion).trim(),
+      proveedor,
+      semana:
+        ciclo || "N/D",
+      vigenciaFin
+    });
+
+  }
+
+
+  if (!records.length) {
+    throw new Error(
+      'El formato Mercaldas fue reconocido, pero no contiene productos con precio válido.'
+    );
+  }
+
+
+  return {
+    meta: {
+      proveedor,
+      semana: ciclo || "N/D",
+      fechaEnvio: null,
+      vigenciaFin
+    },
+    records,
+    catalogo
+  };
+
+}
+
+
 function parseWorkbook(buffer, filename) {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
+
+  // Primero intentamos el formato oficial nuevo Mercaldas.
+  // Si no corresponde, continuamos con el parser histórico.
+  const formatoMercaldas =
+    parseFormatoMercaldasNuevo(
+      wb,
+      filename
+    );
+
+  if (formatoMercaldas) {
+    return formatoMercaldas;
+  }
 
   const meta = { proveedor: "", semana: "", fechaEnvio: null, vigenciaFin: null };
   const sheets = wb.SheetNames.map((name) => {

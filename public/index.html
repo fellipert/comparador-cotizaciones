@@ -22,6 +22,7 @@
     <div style="display:flex; gap:10px;">
       <button class="btn-secondary" id="btnClear">Borrar todos los datos</button>
       <button class="btn-primary" id="btnExport" disabled>⬇ Descargar Excel</button>
+      <button class="btn-secondary" id="btnLogout">Cerrar sesión</button>
     </div>
   </header>
 
@@ -30,9 +31,30 @@
     <button data-tab="comparativo">Comparativo <span class="count" id="countComparativo">0</span></button>
     <button data-tab="alertas">Alertas <span class="count" id="countAlertas">0</span></button>
     <button data-tab="por-proveedor">Por Proveedor</button>
+    <button data-tab="hoja-negociacion">Negociación</button>
+    <button data-tab="negociacion">Negociación (anterior)</button>
+    <button data-tab="pedidos">Pedidos</button>
+    <button data-tab="configuracion">Configuración</button>
+    <button data-tab="ordenes-compra">Órdenes de Compra</button>
   </nav>
 
   <section id="tab-cargar">
+    <div class="card" id="cicloActualCard">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div>
+          <p class="section-title" style="margin:0;">Ciclo de cotización actual: <span id="cicloId">—</span> <span class="count" id="cicloEstado">—</span></p>
+          <p style="color:var(--ink-soft); font-size:0.82rem; margin:4px 0 0;" id="cicloFechas">Cargando…</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select id="cicloAnioSelect" class="manual-input" style="width:105px;"></select>
+
+          <select id="cicloSemanaSelect" class="manual-input" style="width:135px;"></select>
+
+          <button class="btn-primary" id="btnAbrirCiclo">Abrir / seleccionar ciclo</button>
+          <button class="btn-secondary" id="btnCerrarCiclo">Cerrar ciclo</button>
+        </div>
+      </div>
+    </div>
     <div class="card">
       <div class="dropzone" id="dropzone">
         <div class="icon">📄</div>
@@ -99,6 +121,9 @@
     <div class="card">
       <div class="search-row">
         <input type="text" id="searchBox" placeholder="Buscar producto o código…">
+        <select id="cicloFiltroSelect" class="manual-input" style="max-width:220px;">
+          <option value="">Todos los ciclos</option>
+        </select>
         <span class="legend">
           <span><span class="dot" style="background:var(--best)"></span>Mejor precio</span>
           <span><span class="dot" style="background:var(--second)"></span>Segundo mejor</span>
@@ -131,6 +156,414 @@
     </div>
   </section>
 
+
+  
+
+  <!-- ===================================================== -->
+  <section id="tab-hoja-negociacion" style="display:none"><div id="hojaNegRaiz"></div></section>
+
+  <!-- NEGOCIACIÓN UNIFICADA -->
+  <!-- ===================================================== -->
+
+  <section id="tab-negociacion" style="display:none">
+
+    <div class="card">
+
+      <p class="section-title" style="margin-top:0;">
+        Negociación con proveedores
+      </p>
+
+      <p style="
+        color:var(--ink-soft);
+        font-size:0.85rem;
+        margin-top:-6px;
+      ">
+        Un expediente por proveedor y ciclo:
+        cotización inicial → contrapropuesta Mercaldas →
+        respuesta final → precio negociado.
+      </p>
+
+
+      <div style="
+        display:flex;
+        gap:12px;
+        align-items:flex-end;
+        flex-wrap:wrap;
+        margin-top:18px;
+      ">
+
+        <div style="min-width:220px;">
+
+          <label style="
+            font-size:0.78rem;
+            color:var(--ink-soft);
+            font-weight:600;
+          ">
+            Ciclo
+          </label>
+
+          <select
+            id="negUniCiclo"
+            class="manual-input"
+            style="width:100%;margin-top:4px;">
+            <option value="">Selecciona ciclo…</option>
+          </select>
+
+        </div>
+
+
+        <div style="min-width:300px;flex:1;">
+
+          <label style="
+            font-size:0.78rem;
+            color:var(--ink-soft);
+            font-weight:600;
+          ">
+            Proveedor
+          </label>
+
+          <select
+            id="negUniProveedor"
+            class="manual-input"
+            style="width:100%;margin-top:4px;">
+            <option value="">Selecciona proveedor…</option>
+          </select>
+
+        </div>
+
+
+        <button
+          class="btn-primary"
+          id="btnNegUniIniciar">
+          Iniciar negociación
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <div
+      class="card"
+      id="negUniDetalleCard"
+      style="display:none;">
+
+      <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+        flex-wrap:wrap;
+      ">
+
+        <div>
+
+          <p
+            class="section-title"
+            id="negUniTitulo"
+            style="margin:0;">
+            Negociación
+          </p>
+
+          <div
+            id="negUniEstado"
+            style="
+              color:var(--ink-soft);
+              font-size:0.85rem;
+              margin-top:5px;
+            ">
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="table-scroll"
+        style="margin-top:16px;">
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>PLU</th>
+              <th>Producto</th>
+              <th>Presentación</th>
+              <th>Propuesta inicial</th>
+              <th>Contra Mercaldas</th>
+              <th>Final proveedor</th>
+              <th>Precio final</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+
+          <tbody id="negUniBody"></tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+
+
+    <div
+      class="card"
+      id="negUniListaCard">
+
+      <p class="section-title" style="margin-top:0;">
+        Negociaciones del ciclo
+      </p>
+
+      <div id="negUniLista">
+        Selecciona un ciclo.
+      </div>
+
+    </div>
+
+  </section>
+
+
+<section id="tab-pedidos" style="display:none">
+
+    <div class="card">
+
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+
+        <div>
+          <p class="section-title" style="margin:0;">Pedidos Fruver</p>
+
+          <p style="color:var(--ink-soft);font-size:0.85rem;margin:5px 0 0;">
+            Planeación de cantidades para Lunes–Martes.
+            El requerimiento del Excel será el máximo permitido por PLU.
+          </p>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+
+          <select
+            id="pedidoCicloSelect"
+            class="manual-input"
+            style="min-width:180px;">
+          </select>
+
+          <select
+            id="pedidoPeriodoSelect"
+            class="manual-input"
+            style="min-width:160px;">
+            <option value="LUNES-MARTES">Lunes–Martes</option>
+          </select>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="card" id="pedidoPlaneacionCard">
+
+      <p class="section-title">1. Planeación de la demanda</p>
+
+      <p style="color:var(--ink-soft);font-size:0.85rem;margin-top:-8px;">
+        Carga el archivo de Planeación de la Demanda con: PLU | Producto | Cantidad requerida.
+      </p>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;">
+
+        <input
+          type="file"
+          id="pedidoArchivoInput"
+          accept=".xlsx,.xls">
+
+        <button
+          class="btn-primary"
+          id="btnImportarPedido">
+          Cargar planeación de la demanda
+        </button>
+
+      </div>
+
+      <div
+        id="pedidoArchivoActual"
+        style="margin-top:12px;color:var(--ink-soft);font-size:0.85rem;">
+        Sin archivo cargado.
+      </div>
+
+    </div>
+
+
+
+    <div class="card" id="pedidoProveedorCard">
+
+      <p class="section-title">4. Pedido por proveedor</p>
+
+      <p style="color:var(--ink-soft);font-size:0.85rem;margin-top:-8px;">
+        Selecciona un proveedor para revisar sus precios, contrapropuesta
+        y kilos asignados antes de descargar el Excel.
+      </p>
+
+      <div style="
+        display:flex;
+        gap:10px;
+        align-items:center;
+        flex-wrap:wrap;
+        margin-top:14px;
+      ">
+
+        <select
+          id="pedidoProveedorSelect"
+          class="manual-input"
+          style="min-width:280px;">
+          <option value="">Selecciona un proveedor…</option>
+        </select>
+
+        <button
+          class="btn-secondary"
+          id="btnVerPedidoProveedor">
+          Ver pedido
+        </button>
+
+        <button
+          class="btn-primary"
+          id="btnDescargarPedidoProveedor">
+          ⬇ Descargar Excel
+        </button>
+
+      </div>
+
+      <div
+        id="pedidoProveedorResumen"
+        style="
+          margin-top:14px;
+          color:var(--ink-soft);
+          font-size:0.85rem;
+        ">
+      </div>
+
+
+      <div
+        class="table-scroll"
+        id="pedidoProveedorTablaContenedor"
+        style="display:none;margin-top:14px;">
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>PLU</th>
+              <th>Producto</th>
+              <th>Presentación</th>
+              <th>Precio ofertado</th>
+              <th>Contrapropuesta</th>
+              <th>Pedido total</th>
+              <th>% Distribución</th>
+              <th>Pedido proveedor</th>
+            </tr>
+          </thead>
+
+          <tbody id="pedidoProveedorBody"></tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+
+
+    <div
+      id="pedidoResumenCard"
+      class="card"
+      style="display:none;">
+
+      <p class="section-title">2. Resumen del pedido</p>
+
+      <div
+        style="
+          display:grid;
+          grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+          gap:10px;
+          margin-top:12px;
+        ">
+
+        <div class="card" style="margin:0;">
+          <div style="font-size:0.78rem;color:var(--ink-soft);">Productos</div>
+          <div id="pedidoResumenProductos" style="font-size:1.5rem;font-weight:700;">0</div>
+        </div>
+
+        <div class="card" style="margin:0;">
+          <div style="font-size:0.78rem;color:var(--ink-soft);">Completos</div>
+          <div id="pedidoResumenCompletos" style="font-size:1.5rem;font-weight:700;">0</div>
+        </div>
+
+        <div class="card" style="margin:0;">
+          <div style="font-size:0.78rem;color:var(--ink-soft);">Pendientes</div>
+          <div id="pedidoResumenPendientes" style="font-size:1.5rem;font-weight:700;">0</div>
+        </div>
+
+        <div class="card" style="margin:0;">
+          <div style="font-size:0.78rem;color:var(--ink-soft);">Excedidos</div>
+          <div id="pedidoResumenExcedidos" style="font-size:1.5rem;font-weight:700;">0</div>
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div
+      class="card"
+      id="pedidoProductosCard"
+      style="display:none;">
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+
+        <p class="section-title" style="margin:0;">
+          Productos a comprar
+        </p>
+
+        <input
+          id="pedidoBuscar"
+          class="manual-input"
+          placeholder="Buscar PLU o producto..."
+          style="max-width:300px;">
+
+      </div>
+
+      <div class="table-scroll" style="margin-top:14px;">
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>PLU</th>
+              <th>Producto</th>
+              <th>Requerido</th>
+              <th>Asignado</th>
+              <th>Pendiente</th>
+              <th>Exceso</th>
+              <th>Proveedores cotizados</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+
+          <tbody id="pedidoTableBody">
+            <tr>
+              <td colspan="8" style="text-align:center;padding:24px;color:var(--ink-soft);">
+                Carga primero el archivo de pedido.
+              </td>
+            </tr>
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </div>
+
+  </section>
+
   <section id="tab-por-proveedor" style="display:none">
     <div class="card">
       <p class="section-title">Contrapropuesta consolidada por proveedor</p>
@@ -147,8 +580,10 @@
     <div class="card" id="porProveedorCard" style="display:none;">
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
         <p class="section-title" style="margin:0;" id="porProveedorTitulo"></p>
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn-secondary" id="btnMarcarHabituales">Marcar todos como habituales</button>
           <button class="btn-secondary" id="btnAbrirAgregarProducto">+ Agregar producto al proveedor</button>
+          <button class="btn-secondary" id="btnPlantillaCotizacionProveedor">⬇ Formato de cotización</button>
           <button class="btn-primary" id="btnExportPorProveedor">⬇ Descargar contrapropuesta (Excel)</button>
         </div>
       </div>
@@ -160,7 +595,7 @@
         <table id="porProveedorTable">
           <thead><tr>
             <th>Código</th><th>Producto</th><th>Presentación</th><th>Precio de este proveedor</th>
-            <th>Precio mínimo del mercado</th><th>Proveedor mínimo</th><th>Contrapropuesta sugerida</th><th>Tipo</th><th>Estado</th>
+            <th>Precio mínimo del mercado</th><th>Proveedor mínimo</th><th>Contrapropuesta sugerida</th><th>Tipo</th><th>Frecuencia</th><th>Estado</th>
           </tr></thead>
           <tbody id="porProveedorBody"></tbody>
         </table>
@@ -177,7 +612,7 @@
 
       <div id="pasoBuscar">
         <p style="font-size:0.85rem; color:var(--ink-soft); margin-top:6px;">
-          Busca por código, PLU, nombre o presentación. Si no existe, podrás crearlo.
+          Explora el catalogo completo abajo, o escribe para filtrar por codigo, PLU, nombre o presentacion. Si no existe, podras crearlo.
         </p>
         <input type="text" id="agpBuscar" placeholder="Ej: mango, 99999, kilo…" style="width:100%; margin-top:8px;" autocomplete="off">
         <div id="agpResultados" style="margin-top:10px; max-height:220px; overflow-y:auto;"></div>
@@ -244,6 +679,17 @@
             <input type="radio" name="agpTipo" value="adicional"> Adicional
           </label>
         </div>
+
+        <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600; display:block; margin-top:12px;">¿Este proveedor cotiza este producto a diario o una vez por semana?</label>
+        <p style="font-size:0.75rem; color:var(--ink-soft); margin:2px 0 8px;">Si es semanal, el precio que llegue jueves/viernes/sábado se toma como el de la semana siguiente (domingo a domingo).</p>
+        <div style="display:flex; gap:14px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.88rem;">
+            <input type="radio" name="agpFrecuencia" value="diario" checked> Diario
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.88rem;">
+            <input type="radio" name="agpFrecuencia" value="semanal"> Semanal
+          </label>
+        </div>
         <div style="display:flex; gap:10px; margin-top:16px;">
           <button class="btn-secondary" id="btnVolverABuscarDesdeTipo">‹ Elegir otro producto</button>
           <button class="btn-primary" id="btnConfirmarAsociar" style="flex:1;">Guardar</button>
@@ -251,9 +697,371 @@
       </div>
     </div>
   </div>
+
+  <section id="tab-ordenes-compra" style="display:none">
+
+  <div class="card">
+    <p class="section-title" style="margin:0;">Órdenes de Compra</p>
+    <p style="color:var(--ink-soft);font-size:0.85rem;margin:5px 0 0;">
+      Usa el mismo ciclo y periodo seleccionados en la pestaña "Pedidos".
+      Junta automáticamente todas las asignaciones confirmadas de cada proveedor en un solo documento.
+    </p>
+  </div>
+
+  <div class="card">
+    <p class="section-title">Listas para generar</p>
+    <table style="width:100%;border-collapse:collapse;" id="ocPendientesTabla">
+      <thead>
+        <tr><th style="text-align:left;padding:6px;">Proveedor</th><th style="text-align:left;padding:6px;">N&deg; productos</th><th style="text-align:left;padding:6px;">Total estimado</th><th style="padding:6px;"></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <p class="section-title">Histórico de órdenes de compra</p>
+    <table style="width:100%;border-collapse:collapse;" id="ocHistoricoTabla">
+      <thead>
+        <tr><th style="text-align:left;padding:6px;">N&deg; OC</th><th style="text-align:left;padding:6px;">Proveedor</th><th style="text-align:left;padding:6px;">Total</th><th style="text-align:left;padding:6px;">Fecha</th><th style="padding:6px;"></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</section>
+
+  <section id="tab-configuracion" style="display:none">
+
+    <div class="card">
+      <p class="section-title">Imagen corporativa Mercaldas</p>
+
+      <p style="color:var(--ink-soft);font-size:0.85rem;">
+        Este logo se utilizará en la aplicación, cotizaciones,
+        contrapropuestas y formatos de proveedores.
+      </p>
+
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:14px;">
+
+        <img
+          id="logoCorporativoPreview"
+          src=""
+          alt="Logo Mercaldas"
+          style="
+            display:none;
+            width:150px;
+            max-height:90px;
+            object-fit:contain;
+            background:white;
+            border:1px solid #dce8df;
+            border-radius:10px;
+            padding:8px;
+          "
+        >
+
+        <div>
+          <input
+            type="file"
+            id="inputLogoCorporativo"
+            accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+            style="display:none"
+          >
+
+          <button
+            class="btn-primary"
+            id="btnSubirLogoCorporativo"
+            type="button"
+          >
+            Subir logo corporativo
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">Configuracion completa por Excel (nuevo)</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        Descarga esta plantilla, llenala con Proveedor, Codigo, Producto, Presentacion, Frecuencia (diario/semanal)
+        y Tipo (habitual/adicional), y subela. La app identifica cada proveedor, actualiza todo, y para los
+        proveedores nuevos te genera automaticamente usuario y contrasena, descargables en un Excel al final.
+      </p>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+        <button class="btn-secondary" id="btnDescargarPlantillaOnboarding">Descargar plantilla completa</button>
+        <input type="file" id="inputOnboarding" accept=".xlsx,.xls" style="display:none">
+        <button class="btn-primary" id="btnSubirOnboarding">Subir y generar credenciales</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">Usuarios de proveedores</p>
+
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        Sincroniza usuarios y contraseñas desde el archivo de credenciales.
+        Solo se modifican cuentas de proveedores. La cuenta administrador no se toca.
+      </p>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+        <input
+          type="file"
+          id="inputCredencialesProveedores"
+          accept=".xlsx,.xls"
+          style="display:none"
+        >
+
+        <button class="btn-primary" id="btnImportarCredencialesProveedores">
+          Sincronizar contraseñas desde Excel
+        </button>
+      </div>
+
+      <p style="color:var(--ink-soft); font-size:0.78rem; margin-top:10px;">
+        El archivo debe contener las columnas Proveedor, Usuario y Contraseña nueva.
+        Si alguna fila no coincide con la base de datos, no se modifica ninguna contraseña.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="section-title">Base PLU por proveedor</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        Carga el archivo maestro para actualizar qué productos suministra cada proveedor.
+        La importación crea o actualiza relaciones proveedor–PLU y conserva el histórico de cotizaciones.
+      </p>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+        <button class="btn-secondary" id="btnDescargarPLU">Descargar plantilla actual</button>
+
+        <input
+          type="file"
+          id="inputPLU"
+          accept=".xlsx,.xls"
+          style="display:none"
+        >
+
+        <button class="btn-primary" id="btnSubirPLU">
+          Importar PLU por proveedor
+        </button>
+      </div>
+
+      <p style="color:var(--ink-soft); font-size:0.78rem; margin-top:10px;">
+        Admite columnas como: Proveedor, Código/PLU, Producto, Presentación,
+        Frecuencia y Tipo. También admite las columnas corregidas del archivo revisado.
+      </p>
+    </div>
+
+    <div class="card">
+      <p class="section-title">Frecuencia de cotizacion (diario / semanal)</p>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
+        Descarga la plantilla con todos tus proveedores y productos, marca en la columna "Frecuencia"
+        si cada uno cotiza "diario" o "semanal", y súbela de vuelta para actualizar todo de una vez.
+      </p>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+        <button class="btn-secondary" id="btnDescargarPlantillaFrecuencias">Descargar plantilla</button>
+        <input type="file" id="inputPlantillaFrecuencias" accept=".xlsx,.xls" style="display:none">
+        <button class="btn-primary" id="btnSubirPlantillaFrecuencias">Subir plantilla llena</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <p class="section-title" style="margin:0;">Proveedores</p>
+        <button class="btn-primary" id="btnNuevoProveedor">+ Nuevo proveedor</button>
+      </div>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:6px;">
+        Eliminar un proveedor solo lo quita de esta lista — su histórico de cotizaciones no se borra.
+      </p>
+      <div class="table-scroll" style="margin-top:10px;">
+        <table id="proveedoresTable">
+          <thead><tr><th>Nombre</th><th></th></tr></thead>
+          <tbody id="proveedoresTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <p class="section-title" style="margin:0;">Productos (catálogo general)</p>
+        <button class="btn-primary" id="btnNuevoProducto">+ Nuevo producto</button>
+      </div>
+      <input type="text" id="catalogoFiltro" placeholder="Buscar por código, nombre o presentación…" style="width:100%; margin-top:14px;" autocomplete="off">
+      <div class="table-scroll" style="margin-top:14px;">
+        <table id="catalogoTable">
+          <thead><tr>
+            <th>Código</th><th>Producto</th><th>Presentación</th><th></th>
+          </tr></thead>
+          <tbody id="catalogoTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="section-title">Ciclos de cotización</p>
+      <div class="table-scroll">
+        <table id="ciclosTable">
+          <thead><tr>
+            <th>Ciclo</th><th>Recepción</th><th>Vigencia</th><th>Estado</th><th>Cerrado por</th>
+          </tr></thead>
+          <tbody id="ciclosTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <div id="proveedorModalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <p class="section-title" style="margin:0;" id="proveedorModalTitulo">Nuevo proveedor</p>
+        <button class="btn-ghost" id="btnCerrarProveedorModal" style="font-size:1.1rem;">✕</button>
+      </div>
+      <div style="margin-top:10px;">
+        <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Nombre del proveedor</label>
+        <input type="text" id="provModalNombre" style="width:100%; margin-top:4px;">
+      </div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn-secondary" id="btnCancelarProveedorModal" style="flex:1;">Cancelar</button>
+        <button class="btn-primary" id="btnGuardarProveedorModal" style="flex:1;">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="catalogoModalOverlay" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <p class="section-title" style="margin:0;" id="catalogoModalTitulo">Nuevo producto</p>
+        <button class="btn-ghost" id="btnCerrarCatalogoModal" style="font-size:1.1rem;">✕</button>
+      </div>
+      <div style="margin-top:10px;">
+        <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Código / PLU</label>
+        <input type="text" id="catModalCodigo" style="width:100%; margin-top:4px;">
+      </div>
+      <div style="margin-top:10px;">
+        <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Nombre del producto</label>
+        <input type="text" id="catModalNombre" style="width:100%; margin-top:4px;">
+      </div>
+      <div style="margin-top:10px;">
+        <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600;">Presentación</label>
+        <input type="text" id="catModalPresentacion" style="width:100%; margin-top:4px;">
+      </div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn-secondary" id="btnCancelarCatalogoModal" style="flex:1;">Cancelar</button>
+        <button class="btn-primary" id="btnGuardarCatalogoModal" style="flex:1;">Guardar</button>
+      </div>
+    </div>
+  </div>
 </div>
 <div id="toast"></div>
 <script src="/app.js"></script>
+
+
+  <div
+    id="pedidoDistribucionOverlay"
+    style="
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.45);
+      z-index:9999;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+    ">
+
+    <div
+      class="card"
+      style="
+        width:min(900px,96vw);
+        max-height:90vh;
+        overflow:auto;
+        margin:0;
+      ">
+
+      <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:12px;
+      ">
+
+        <div>
+          <p
+            class="section-title"
+            id="pedidoDistribucionTitulo"
+            style="margin:0;">
+            Distribuir pedido
+          </p>
+
+          <div
+            id="pedidoDistribucionResumen"
+            style="
+              margin-top:6px;
+              color:var(--ink-soft);
+              font-size:.86rem;
+            ">
+          </div>
+        </div>
+
+        <button
+          class="btn-secondary"
+          id="btnCerrarDistribucion">
+          Cerrar
+        </button>
+
+      </div>
+
+
+      <div
+        id="pedidoDistribucionAlerta"
+        style="
+          display:none;
+          margin-top:14px;
+          padding:10px 12px;
+          border-radius:8px;
+          font-weight:700;
+        ">
+      </div>
+
+
+      <div
+        class="table-scroll"
+        style="margin-top:16px;">
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>Proveedor</th>
+              <th>Precio ofertado</th>
+              <th>Contrapropuesta</th>
+              <th>Kg asignados</th>
+            </tr>
+          </thead>
+
+          <tbody
+            id="pedidoDistribucionBody">
+          </tbody>
+
+        </table>
+
+      </div>
+
+
+      <div
+        style="
+          display:flex;
+          justify-content:flex-end;
+          gap:10px;
+          margin-top:16px;
+        ">
+
+        <button
+          class="btn-primary"
+          id="btnGuardarDistribucion">
+          Guardar distribución
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
 </body>
 </html>
-

@@ -200,5 +200,77 @@ function computeVistaProveedor(quotes, proveedor, contrapropuestaPct) {
   return items;
 }
 
-module.exports = { computeComparativo, computeDashboard, computeAlertas, computeAgrupamiento, computeVistaProveedor };
+function calcularSemanaVigencia(fechaCotizacionISO) {
+  const d = new Date(fechaCotizacionISO);
+  if (isNaN(d.getTime())) return null;
+  const dia = d.getDay();
+  const diasHastaDomingo = (7 - dia) % 7 || 7;
+  const inicio = new Date(d);
+  inicio.setDate(d.getDate() + diasHastaDomingo);
+  const fin = new Date(inicio);
+  fin.setDate(inicio.getDate() + 5);
+  const fmt = (x) => x.toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "UTC" });
+  return {
+    inicio: inicio.toISOString().slice(0, 10),
+    fin: fin.toISOString().slice(0, 10),
+    etiqueta: `Vigente del ${fmt(inicio)} al ${fmt(fin)}`,
+  };
+}
 
+// ---------- Ciclo de Cotización Mercaldas ----------
+
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const diff = d - firstThursday;
+  return { anio: d.getUTCFullYear(), semana: 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000)) };
+}
+
+/**
+ * Dado cualquier fecha, calcula a qué ciclo Mercaldas pertenece:
+ * la ventana de recepción (jueves a sábado) y la vigencia (domingo a viernes) que la contienen.
+ */
+function calcularVentanaRecepcion(fechaISO) {
+  const f = new Date(fechaISO + "T00:00:00Z");
+  const dia = f.getUTCDay();
+  const diasDesdeJueves = (dia - 4 + 7) % 7;
+  const jueves = new Date(f);
+  jueves.setUTCDate(f.getUTCDate() - diasDesdeJueves);
+  const sabado = new Date(jueves); sabado.setUTCDate(jueves.getUTCDate() + 2);
+  const domingoInicio = new Date(jueves); domingoInicio.setUTCDate(jueves.getUTCDate() + 3);
+  const domingoFin = new Date(domingoInicio); domingoFin.setUTCDate(domingoInicio.getUTCDate() + 5);
+  const iso = (x) => x.toISOString().slice(0, 10);
+  // El número del ciclo es la semana ISO en que RIGE (jueves de la semana siguiente a la recepción)
+  const juevesVigencia = new Date(jueves);
+  juevesVigencia.setUTCDate(jueves.getUTCDate() + 7);
+  const { anio, semana } = getISOWeek(juevesVigencia);
+  return {
+    id: "COT-" + anio + "-" + String(semana).padStart(2, "0"),
+    anio,
+    semana_calendario: semana,
+    fecha_inicio_recepcion: iso(jueves),
+    fecha_fin_recepcion: iso(sabado),
+    fecha_inicio_vigencia: iso(domingoInicio),
+    fecha_fin_vigencia: iso(domingoFin),
+  };
+}
+
+/**
+ * Estado efectivo de un ciclo según la fecha de hoy. CERRADO es manual (cerrado_en marcado
+ * por un administrador); las demás transiciones son automáticas según el calendario.
+ */
+function estadoEfectivoCiclo(ciclo, hoy) {
+  if (hoy > ciclo.fecha_fin_vigencia) return "FINALIZADO";
+  if (hoy >= ciclo.fecha_inicio_vigencia) return "EN_VIGENCIA";
+  if (ciclo.cerrado_en) return "CERRADO";
+  if (hoy < ciclo.fecha_inicio_recepcion) return "BORRADOR";
+  if (hoy === ciclo.fecha_fin_recepcion) return "POR_CERRAR";
+  return "ABIERTO";
+}
+
+module.exports = {
+  computeComparativo, computeDashboard, computeAlertas, computeAgrupamiento, computeVistaProveedor,
+  calcularSemanaVigencia, calcularVentanaRecepcion, estadoEfectivoCiclo, getISOWeek,
+};

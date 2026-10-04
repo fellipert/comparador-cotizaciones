@@ -8,3 +8,15 @@ data/
 npm-debug.log*
 
 backups/
+*.sqlite
+*.sqlite3
+.env.*
+!.env.example
+*.antes_*
+*.backup_*
+*.bak
+*.orig
+*.log
+.DS_Store
+*.save
+*.save.*

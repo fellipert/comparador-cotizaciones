@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iniciar sesión — Comparador de Cotizaciones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 32px; box-shadow: var(--shadow); width: 100%; max-width: 380px; }
+  .login-box h1 { font-family: "Roboto Slab", serif; font-size: 1.3rem; margin: 0 0 4px; }
+  .login-box p { color: var(--ink-soft); font-size: 0.85rem; margin: 0 0 20px; }
+  .login-box label { font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; display: block; margin-bottom: 4px; }
+  .login-box input { width: 100%; margin-bottom: 14px; }
+  .login-box button.btn-primary, .login-box button.btn-secondary { width: 100%; }
+  .msgBox { font-size: 0.85rem; margin-bottom: 12px; display: none; padding: 8px 10px; border-radius: 8px; }
+  .msgBox.error { color: var(--warn); background: var(--warn-bg); }
+  .msgBox.ok { color: var(--best); background: var(--best-bg); }
+  .password-wrap { position: relative; }
+  .password-wrap input { padding-right: 42px; }
+  .toggle-eye { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); margin-top: -7px; background: none; border: none; cursor: pointer; font-size: 1rem; padding: 4px; width: auto; color: var(--ink-soft); }
+  .link-btn { background: none; border: none; color: var(--brand); font-size: 0.82rem; cursor: pointer; padding: 0; text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="brand-mark" style="margin-bottom:12px;">🥬</div>
+    <h1>Comparador de Cotizaciones</h1>
+    <p id="subtitulo">Fruver Mercaldas — inicia sesión para continuar</p>
+
+    <div id="msgBox" class="msgBox"></div>
+
+    <div id="pasoLogin">
+      <label for="usuario">Usuario</label>
+      <input type="text" id="usuario" autocomplete="username">
+      <label for="password">Contraseña</label>
+      <div class="password-wrap">
+        <input type="password" id="password" autocomplete="current-password">
+        <button type="button" class="toggle-eye" data-target="password">👁</button>
+      </div>
+      <button class="btn-primary" id="btnLogin">Entrar</button>
+      <p style="margin-top:14px; text-align:center;">
+        <button type="button" class="link-btn" id="btnIrRecuperar">¿Olvidaste tu contraseña?</button>
+      </p>
+    </div>
+
+    <div id="pasoSolicitarCodigo" style="display:none;">
+      <p style="margin-top:0;">Escribe tu usuario. Pídele el código de 6 dígitos a tu administrador (lo verá en el registro del servidor).</p>
+      <label for="usuarioRecuperar">Usuario</label>
+      <input type="text" id="usuarioRecuperar" autocomplete="username">
+      <button class="btn-primary" id="btnSolicitarCodigo">Solicitar código</button>
+      <p style="margin-top:14px; text-align:center;">
+        <button type="button" class="link-btn" id="btnVolverLoginDesdeSolicitar">‹ Volver a iniciar sesión</button>
+      </p>
+    </div>
+
+    <div id="pasoResetear" style="display:none;">
+      <p style="margin-top:0;">Escribe el código que te dio tu administrador y tu nueva contraseña.</p>
+      <label for="usuarioReset">Usuario</label>
+      <input type="text" id="usuarioReset" autocomplete="username">
+      <label for="codigoReset">Código de 6 dígitos</label>
+      <input type="text" id="codigoReset" inputmode="numeric" maxlength="6">
+      <label for="nuevaPassword">Nueva contraseña</label>
+      <div class="password-wrap">
+        <input type="password" id="nuevaPassword" autocomplete="new-password">
+        <button type="button" class="toggle-eye" data-target="nuevaPassword">👁</button>
+      </div>
+      <button class="btn-primary" id="btnResetear">Cambiar contraseña</button>
+      <p style="margin-top:14px; text-align:center;">
+        <button type="button" class="link-btn" id="btnVolverLoginDesdeResetear">‹ Volver a iniciar sesión</button>
+      </p>
+    </div>
+  </div>
+  <script>
+    function mostrarMensaje(texto, tipo) {
+      const box = document.getElementById("msgBox");
+      box.textContent = texto;
+      box.className = "msgBox " + tipo;
+      box.style.display = "block";
+    }
+    function ocultarMensaje() {
+      document.getElementById("msgBox").style.display = "none";
+    }
+    function mostrarPaso(paso) {
+      ocultarMensaje();
+      document.getElementById("pasoLogin").style.display = paso === "login" ? "block" : "none";
+      document.getElementById("pasoSolicitarCodigo").style.display = paso === "solicitar" ? "block" : "none";
+      document.getElementById("pasoResetear").style.display = paso === "resetear" ? "block" : "none";
+    }
+
+    document.querySelectorAll(".toggle-eye").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const input = document.getElementById(btn.dataset.target);
+        input.type = input.type === "password" ? "text" : "password";
+        btn.textContent = input.type === "password" ? "👁" : "🙈";
+      });
+    });
+
+    document.getElementById("btnIrRecuperar").addEventListener("click", () => mostrarPaso("solicitar"));
+    document.getElementById("btnVolverLoginDesdeSolicitar").addEventListener("click", () => mostrarPaso("login"));
+    document.getElementById("btnVolverLoginDesdeResetear").addEventListener("click", () => mostrarPaso("login"));
+
+    async function intentarLogin() {
+      const usuario = document.getElementById("usuario").value.trim();
+      const password = document.getElementById("password").value;
+      ocultarMensaje();
+      if (!usuario || !password) { mostrarMensaje("Escribe usuario y contraseña.", "error"); return; }
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usuario, password }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          mostrarMensaje(data.error || "No se pudo iniciar sesión.", "error");
+          return;
+        }
+        const meRes = await fetch("/api/auth/me");
+        const me = await meRes.json();
+
+        if (me.tipo === "proveedor") {
+          window.location.href = "/proveedor.html";
+        } else {
+          window.location.href = "/index.html";
+        }
+      } catch (err) {
+        mostrarMensaje("Error de conexión con el servidor.", "error");
+      }
+    }
+    document.getElementById("btnLogin").addEventListener("click", intentarLogin);
+    document.getElementById("password").addEventListener("keydown", (e) => { if (e.key === "Enter") intentarLogin(); });
+
+    async function solicitarCodigo() {
+      const usuario = document.getElementById("usuarioRecuperar").value.trim();
+      ocultarMensaje();
+      if (!usuario) { mostrarMensaje("Escribe tu usuario.", "error"); return; }
+      try {
+        await fetch("/api/auth/solicitar-codigo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usuario }),
+        });
+        document.getElementById("usuarioReset").value = usuario;
+        mostrarPaso("resetear");
+        mostrarMensaje("Si el usuario existe, ya se generó un código. Pídeselo a tu administrador.", "ok");
+      } catch (err) {
+        mostrarMensaje("Error de conexión con el servidor.", "error");
+      }
+    }
+    document.getElementById("btnSolicitarCodigo").addEventListener("click", solicitarCodigo);
+
+    async function resetearPassword() {
+      const usuario = document.getElementById("usuarioReset").value.trim();
+      const codigo = document.getElementById("codigoReset").value.trim();
+      const nuevaPassword = document.getElementById("nuevaPassword").value;
+      ocultarMensaje();
+      if (!usuario || !codigo || !nuevaPassword) { mostrarMensaje("Completa todos los campos.", "error"); return; }
+      try {
+        const res = await fetch("/api/auth/resetear-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usuario, codigo, nuevaPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { mostrarMensaje(data.error || "No se pudo cambiar la contraseña.", "error"); return; }
+        mostrarPaso("login");
+        mostrarMensaje("Contraseña actualizada. Ya puedes iniciar sesión.", "ok");
+      } catch (err) {
+        mostrarMensaje("Error de conexión con el servidor.", "error");
+      }
+    }
+    document.getElementById("btnResetear").addEventListener("click", resetearPassword);
+  </script>
+</body>
+</html>
+

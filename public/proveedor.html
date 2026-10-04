@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+Portal de Proveedores - Mercaldas
+</title>
+
+<style>
+
+:root {
+  --verde:#08753e;
+  --verde2:#075c32;
+  --fondo:#f5f7f6;
+  --card:#ffffff;
+  --texto:#24342b;
+  --suave:#6c7971;
+  --borde:#dce5df;
+  --azul:#2563eb;
+}
+
+* {
+  box-sizing:border-box;
+}
+
+body {
+  margin:0;
+  font-family:Arial, Helvetica, sans-serif;
+  background:var(--fondo);
+  color:var(--texto);
+}
+
+header {
+  background:var(--verde);
+  color:#fff;
+  padding:18px;
+}
+
+.header-inner {
+  max-width:1150px;
+  margin:auto;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+}
+
+h1 {
+  margin:0;
+  font-size:1.25rem;
+}
+
+.container {
+  max-width:1150px;
+  margin:22px auto;
+  padding:0 15px 50px;
+}
+
+.card {
+  background:var(--card);
+  border:1px solid var(--borde);
+  border-radius:12px;
+  padding:20px;
+  margin-bottom:17px;
+}
+
+.nombre-proveedor {
+  font-size:1.5rem;
+  font-weight:700;
+  color:var(--verde2);
+}
+
+.suave {
+  color:var(--suave);
+}
+
+.ciclo {
+  margin-top:14px;
+  padding:13px;
+  border-radius:9px;
+  background:#edf8f1;
+  line-height:1.55;
+}
+
+.toolbar {
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:15px;
+}
+
+button {
+  border:0;
+  border-radius:8px;
+  padding:10px 15px;
+  cursor:pointer;
+  font-weight:650;
+}
+
+.btn-primary {
+  background:var(--verde);
+  color:white;
+}
+
+.btn-secondary {
+  background:white;
+  color:var(--verde);
+  border:1px solid #ccd9d1;
+}
+
+.section-title {
+  font-weight:700;
+  font-size:1.08rem;
+}
+
+.table-scroll {
+  overflow:auto;
+  margin-top:13px;
+}
+
+table {
+  width:100%;
+  border-collapse:collapse;
+}
+
+th,
+td {
+  padding:11px 10px;
+  border-bottom:1px solid var(--borde);
+  text-align:left;
+}
+
+th {
+  font-size:.78rem;
+  color:var(--suave);
+  background:#fafcfb;
+}
+
+td {
+  font-size:.89rem;
+}
+
+.plu-link {
+  background:none;
+  padding:0;
+  color:var(--azul);
+  text-decoration:underline;
+  font-weight:700;
+}
+
+.estado {
+  font-size:.76rem;
+  padding:5px 9px;
+  border-radius:20px;
+  background:#edf5f0;
+  display:inline-block;
+}
+
+.estado.cotizado {
+  background:#dff3e7;
+  color:#075c32;
+}
+
+.temporada {
+  background:#fff9e8;
+}
+
+.empty {
+  color:var(--suave);
+  text-align:center;
+  padding:20px;
+}
+
+
+/* MODAL */
+
+.modal-overlay {
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.38);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:1000;
+  padding:15px;
+}
+
+.modal {
+  width:min(520px, 100%);
+  background:white;
+  border-radius:14px;
+  padding:22px;
+  box-shadow:0 15px 45px rgba(0,0,0,.22);
+}
+
+.modal-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+}
+
+.modal h2 {
+  margin:0;
+  color:var(--verde2);
+  font-size:1.25rem;
+}
+
+.field {
+  margin-top:14px;
+}
+
+.field label {
+  display:block;
+  font-size:.78rem;
+  font-weight:700;
+  color:var(--suave);
+  margin-bottom:5px;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width:100%;
+  border:1px solid #cad7cf;
+  border-radius:8px;
+  padding:10px;
+  font-size:.95rem;
+}
+
+textarea {
+  min-height:80px;
+  resize:vertical;
+}
+
+.modal-actions {
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  margin-top:20px;
+}
+
+.check-line {
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-top:15px;
+}
+
+.check-line input {
+  width:19px;
+  height:19px;
+}
+
+#mensaje {
+  display:none;
+  padding:12px;
+  border-radius:8px;
+  margin-bottom:15px;
+}
+
+#mensaje.ok {
+  display:block;
+  background:#e6f6ec;
+  color:#075c32;
+}
+
+#mensaje.error {
+  display:block;
+  background:#fdecec;
+  color:#8c2020;
+}
+
+@media(max-width:650px) {
+
+  .header-inner {
+    align-items:flex-start;
+  }
+
+  th:nth-child(3),
+  td:nth-child(3) {
+    display:none;
+  }
+
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<header>
+
+  <div class="header-inner">
+
+    <h1>
+      Mercaldas · Portal de Proveedores
+    </h1>
+
+    <button
+      class="btn-secondary"
+      id="btnLogout"
+    >
+      Cerrar sesión
+    </button>
+
+  </div>
+
+</header>
+
+
+<main class="container">
+
+  <div id="mensaje"></div>
+
+
+  <section class="card">
+
+    <div
+      class="nombre-proveedor"
+      id="proveedorNombre"
+    >
+      Cargando...
+    </div>
+
+    <div class="suave">
+      Propuesta Comercial Fruver
+    </div>
+
+    <div
+      id="cicloBox"
+      class="ciclo"
+    >
+      Consultando ciclo activo...
+    </div>
+
+
+    <div class="toolbar">
+
+      <button
+        class="btn-secondary"
+        id="btnDescargarPlantilla"
+      >
+        Descargar plantilla Excel
+      </button>
+
+
+      <input
+        type="file"
+        id="inputExcel"
+        accept=".xlsx,.xls"
+        style="display:none"
+      >
+
+
+      <button
+        class="btn-primary"
+        id="btnSubirExcel"
+      >
+        Subir cotización Excel
+      </button>
+
+    </div>
+
+  </section>
+
+
+  <section class="card">
+
+    <div class="section-title">
+      Productos habituales
+    </div>
+
+    <p class="suave">
+      Haz clic sobre el PLU para registrar o modificar
+      la oferta comercial de este producto.
+    </p>
+
+    <div class="table-scroll">
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>PLU</th>
+            <th>Producto</th>
+            <th>Presentación</th>
+            <th>Frecuencia</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+
+        <tbody id="habitualesBody"></tbody>
+
+      </table>
+
+    </div>
+
+  </section>
+
+
+  <section class="card temporada">
+
+    <div class="section-title">
+      Productos de temporada / adicionales
+    </div>
+
+    <p class="suave">
+      Aquí aparecen los productos adicionales que tienes
+      asociados. Haz clic en el PLU y selecciona si deseas
+      ofertarlo durante esta semana.
+    </p>
+
+    <div class="table-scroll">
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>PLU</th>
+            <th>Producto</th>
+            <th>Presentación</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+
+        <tbody id="adicionalesBody"></tbody>
+
+      </table>
+
+    </div>
+
+  </section>
+
+
+</main>
+
+
+<!-- MODAL OFERTA -->
+
+<div
+  class="modal-overlay"
+  id="ofertaModal"
+>
+
+  <div class="modal">
+
+    <div class="modal-header">
+
+      <div>
+
+        <h2 id="modalTitulo">
+          Oferta comercial
+        </h2>
+
+        <div
+          class="suave"
+          id="modalProducto"
+        ></div>
+
+      </div>
+
+      <button
+        class="btn-secondary"
+        id="btnCerrarModal"
+      >
+        ✕
+      </button>
+
+    </div>
+
+
+    <div
+      class="field"
+      id="campoTemporada"
+      style="display:none"
+    >
+
+      <label>
+        Producto de temporada
+      </label>
+
+      <div class="check-line">
+
+        <input
+          type="checkbox"
+          id="modalOfertar"
+        >
+
+        <span>
+          Ofertar este producto esta semana
+        </span>
+
+      </div>
+
+    </div>
+
+
+    <div class="field">
+
+      <label>
+        Precio propuesta
+      </label>
+
+      <input
+        type="number"
+        id="modalPrecio"
+        min="1"
+        step="1"
+        placeholder="Ej: 4500"
+      >
+
+    </div>
+
+
+    <div class="field">
+
+      <label>
+        Disponibilidad
+      </label>
+
+      <select id="modalDisponibilidad">
+
+        <option value="">
+          Selecciona...
+        </option>
+
+        <option value="Disponible">
+          Disponible
+        </option>
+
+        <option value="Limitado">
+          Disponibilidad limitada
+        </option>
+
+        <option value="No disponible">
+          No disponible
+        </option>
+
+      </select>
+
+    </div>
+
+
+    <div class="field">
+
+      <label>
+        Observación
+      </label>
+
+      <textarea
+        id="modalObservacion"
+        placeholder="Información adicional de la oferta..."
+      ></textarea>
+
+    </div>
+
+
+    <div class="modal-actions">
+
+      <button
+        class="btn-secondary"
+        id="btnCancelarOferta"
+      >
+        Cancelar
+      </button>
+
+      <button
+        class="btn-primary"
+        id="btnGuardarOferta"
+      >
+        Guardar oferta
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<script>
+
+(function () {
+
+  let portal = null;
+  let productoActual = null;
+  let ofertas = new Map();
+
+
+  function esc(s) {
+
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+
+  }
+
+
+  function mensaje(texto, tipo = "ok") {
+
+    const box =
+      document.getElementById("mensaje");
+
+    box.className = tipo;
+    box.textContent = texto;
+
+    window.scrollTo({
+      top:0,
+      behavior:"smooth"
+    });
+
+  }
+
+
+  async function cargarPortal() {
+
+    const res =
+      await fetch("/api/proveedor/portal");
+
+
+    if (res.status === 401) {
+
+      window.location.href =
+        "/login.html";
+
+      return;
+
+    }
+
+
+    const data = await res.json();
+
+
+    if (!res.ok) {
+
+      throw new Error(
+        data.error ||
+        "No se pudo cargar el portal."
+      );
+
+    }
+
+
+    portal = data;
+    ofertas = new Map();
+
+
+    [
+      ...portal.habituales,
+      ...portal.adicionales
+    ].forEach(p => {
+
+      if (p.propuesta) {
+
+        ofertas.set(
+          String(p.codigo),
+          {
+            codigo:String(p.codigo),
+            precio:p.propuesta.precio,
+            disponibilidad:
+              p.propuesta.disponibilidad || "",
+            observacion:
+              p.propuesta.observacion || ""
+          }
+        );
+
+      }
+
+    });
+
+
+    document
+      .getElementById("proveedorNombre")
+      .textContent =
+        portal.proveedor;
+
+
+    renderCiclo();
+    renderProductos();
+
+  }
+
+
+  function renderCiclo() {
+
+    const box =
+      document.getElementById("cicloBox");
+
+    const btnExcel =
+      document.getElementById("btnSubirExcel");
+
+    const btnPlantilla =
+      document.getElementById("btnDescargarPlantilla");
+
+
+    if (!portal.ciclo) {
+
+      box.innerHTML =
+        "<strong>No hay ciclo activo.</strong><br>" +
+        "Mercaldas debe programar la semana " +
+        "antes de recibir propuestas.";
+
+      btnExcel.disabled = true;
+      btnPlantilla.disabled = true;
+
+      return;
+
+    }
+
+
+    box.innerHTML =
+
+      "<strong>Ciclo activo: " +
+      esc(portal.ciclo.id) +
+      "</strong><br>" +
+
+      "Recepción de propuestas: " +
+      esc(portal.ciclo.fecha_inicio_recepcion) +
+      " al " +
+      esc(portal.ciclo.fecha_fin_recepcion) +
+      "<br>" +
+
+      "Vigencia comercial: " +
+      esc(portal.ciclo.fecha_inicio_vigencia) +
+      " al " +
+      esc(portal.ciclo.fecha_fin_vigencia);
+
+
+    btnExcel.disabled =
+      !portal.puedeCotizar;
+
+    btnPlantilla.disabled = false;
+
+  }
+
+
+  function estadoProducto(p) {
+
+    return ofertas.has(String(p.codigo))
+      ? '<span class="estado cotizado">Cotizado</span>'
+      : '<span class="estado">Pendiente</span>';
+
+  }
+
+
+  function fila(p, adicional) {
+
+    return `
+
+      <tr>
+
+        <td>
+
+          <button
+            class="plu-link"
+            data-plu="${esc(p.codigo)}"
+          >
+            ${esc(p.codigo)}
+          </button>
+
+        </td>
+
+        <td>
+          ${esc(p.producto)}
+        </td>
+
+        <td>
+          ${esc(p.presentacion)}
+        </td>
+
+        ${adicional
+          ? ""
+          : "<td>" +
+              esc(p.frecuencia) +
+            "</td>"
+        }
+
+        <td>
+          ${estadoProducto(p)}
+        </td>
+
+      </tr>
+
+    `;
+
+  }
+
+
+  function renderProductos() {
+
+    const hb =
+      document.getElementById(
+        "habitualesBody"
+      );
+
+    const ab =
+      document.getElementById(
+        "adicionalesBody"
+      );
+
+
+    hb.innerHTML =
+      portal.habituales.length
+
+      ? portal.habituales
+          .map(p => fila(p, false))
+          .join("")
+
+      : '<tr><td colspan="5" class="empty">' +
+        'No tienes productos habituales asociados.' +
+        '</td></tr>';
+
+
+    ab.innerHTML =
+      portal.adicionales.length
+
+      ? portal.adicionales
+          .map(p => fila(p, true))
+          .join("")
+
+      : '<tr><td colspan="4" class="empty">' +
+        'Actualmente no tienes productos de temporada asociados.' +
+        '</td></tr>';
+
+  }
+
+
+  function buscarProducto(codigo) {
+
+    return [
+      ...portal.habituales,
+      ...portal.adicionales
+    ].find(
+      p => String(p.codigo) === String(codigo)
+    );
+
+  }
+
+
+  function abrirModal(codigo) {
+
+    if (!portal.ciclo) {
+
+      mensaje(
+        "Mercaldas todavía no ha programado una semana de cotización.",
+        "error"
+      );
+
+      return;
+
+    }
+
+
+    productoActual =
+      buscarProducto(codigo);
+
+
+    if (!productoActual)
+      return;
+
+
+    const oferta =
+      ofertas.get(String(codigo));
+
+
+    document
+      .getElementById("modalTitulo")
+      .textContent =
+        "PLU " + productoActual.codigo;
+
+
+    document
+      .getElementById("modalProducto")
+      .textContent =
+        productoActual.producto +
+        " · " +
+        productoActual.presentacion;
+
+
+    document
+      .getElementById("modalPrecio")
+      .value =
+        oferta
+          ? oferta.precio
+          : "";
+
+
+    document
+      .getElementById(
+        "modalDisponibilidad"
+      )
+      .value =
+        oferta
+          ? oferta.disponibilidad
+          : "";
+
+
+    document
+      .getElementById(
+        "modalObservacion"
+      )
+      .value =
+        oferta
+          ? oferta.observacion
+          : "";
+
+
+    const esAdicional =
+      productoActual.tipo !== "habitual";
+
+
+    document
+      .getElementById(
+        "campoTemporada"
+      )
+      .style.display =
+        esAdicional
+          ? "block"
+          : "none";
+
+
+    document
+      .getElementById(
+        "modalOfertar"
+      )
+      .checked =
+        esAdicional
+          ? !!oferta
+          : true;
+
+
+    document
+      .getElementById(
+        "ofertaModal"
+      )
+      .style.display =
+        "flex";
+
+  }
+
+
+  function cerrarModal() {
+
+    document
+      .getElementById(
+        "ofertaModal"
+      )
+      .style.display =
+        "none";
+
+    productoActual = null;
+
+  }
+
+
+  async function guardarOferta() {
+
+    if (!productoActual)
+      return;
+
+
+    const esAdicional =
+      productoActual.tipo !== "habitual";
+
+
+    const ofertar =
+      document
+        .getElementById("modalOfertar")
+        .checked;
+
+
+    const codigo =
+      String(productoActual.codigo);
+
+
+    if (
+      esAdicional &&
+      !ofertar
+    ) {
+
+      ofertas.delete(codigo);
+
+    } else {
+
+      const precio =
+        Number(
+          document
+            .getElementById("modalPrecio")
+            .value
+        );
+
+
+      if (
+        !Number.isFinite(precio) ||
+        precio <= 0
+      ) {
+
+        alert(
+          "Ingresa un precio válido."
+        );
+
+        return;
+
+      }
+
+
+      ofertas.set(
+        codigo,
+        {
+          codigo,
+          precio,
+          disponibilidad:
+            document
+              .getElementById(
+                "modalDisponibilidad"
+              )
+              .value,
+
+          observacion:
+            document
+              .getElementById(
+                "modalObservacion"
+              )
+              .value
+              .trim()
+        }
+      );
+
+    }
+
+
+    const items =
+      Array.from(
+        ofertas.values()
+      );
+
+
+    if (!items.length) {
+
+      cerrarModal();
+      renderProductos();
+
+      return;
+
+    }
+
+
+    const btn =
+      document.getElementById(
+        "btnGuardarOferta"
+      );
+
+
+    btn.disabled = true;
+    btn.textContent = "Guardando...";
+
+
+    try {
+
+      const res =
+        await fetch(
+          "/api/proveedor/propuesta",
+          {
+            method:"POST",
+
+            headers:{
+              "Content-Type":
+                "application/json"
+            },
+
+            body:JSON.stringify({
+              items
+            })
+          }
+        );
+
+
+      const data =
+        await res.json();
+
+
+      if (!res.ok) {
+
+        throw new Error(
+          data.error ||
+          "No se pudo guardar la oferta."
+        );
+
+      }
+
+
+      cerrarModal();
+
+      mensaje(
+        "Oferta guardada correctamente.",
+        "ok"
+      );
+
+
+      await cargarPortal();
+
+
+    } catch (err) {
+
+      alert(err.message);
+
+    } finally {
+
+      btn.disabled = false;
+      btn.textContent =
+        "Guardar oferta";
+
+    }
+
+  }
+
+
+  document
+    .addEventListener(
+      "click",
+      e => {
+
+        const plu =
+          e.target.closest(
+            "[data-plu]"
+          );
+
+        if (plu) {
+
+          abrirModal(
+            plu.dataset.plu
+          );
+
+        }
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      "btnCerrarModal"
+    )
+    .addEventListener(
+      "click",
+      cerrarModal
+    );
+
+
+  document
+    .getElementById(
+      "btnCancelarOferta"
+    )
+    .addEventListener(
+      "click",
+      cerrarModal
+    );
+
+
+  document
+    .getElementById(
+      "ofertaModal"
+    )
+    .addEventListener(
+      "click",
+      e => {
+
+        if (
+          e.target.id ===
+          "ofertaModal"
+        ) {
+
+          cerrarModal();
+
+        }
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      "btnGuardarOferta"
+    )
+    .addEventListener(
+      "click",
+      guardarOferta
+    );
+
+
+  document
+    .getElementById(
+      "btnDescargarPlantilla"
+    )
+    .addEventListener(
+      "click",
+      () => {
+
+        window.location.href =
+          "/api/proveedor/plantilla-cotizacion";
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      "btnSubirExcel"
+    )
+    .addEventListener(
+      "click",
+      () => {
+
+        document
+          .getElementById(
+            "inputExcel"
+          )
+          .click();
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      "inputExcel"
+    )
+    .addEventListener(
+      "change",
+      async e => {
+
+        const file =
+          e.target.files[0];
+
+        if (!file)
+          return;
+
+
+        const form =
+          new FormData();
+
+        form.append(
+          "archivo",
+          file
+        );
+
+
+        try {
+
+          mensaje(
+            "Procesando archivo Excel...",
+            "ok"
+          );
+
+
+          const res =
+            await fetch(
+              "/api/proveedor/importar-cotizacion",
+              {
+                method:"POST",
+                body:form
+              }
+            );
+
+
+          const data =
+            await res.json();
+
+
+          if (!res.ok) {
+
+            let detalle =
+              data.error ||
+              "No se pudo importar.";
+
+            if (
+              Array.isArray(
+                data.errores
+              )
+            ) {
+
+              detalle +=
+                "\n\n" +
+                data.errores.join("\n");
+
+            }
+
+            throw new Error(
+              detalle
+            );
+
+          }
+
+
+          mensaje(
+            "Excel cargado correctamente. " +
+            data.actualizados +
+            " productos actualizados.",
+            "ok"
+          );
+
+
+          await cargarPortal();
+
+
+        } catch (err) {
+
+          alert(err.message);
+
+          mensaje(
+            "El archivo no pudo ser cargado.",
+            "error"
+          );
+
+        } finally {
+
+          e.target.value = "";
+
+        }
+
+      }
+    );
+
+
+  document
+    .getElementById(
+      "btnLogout"
+    )
+    .addEventListener(
+      "click",
+      async () => {
+
+        await fetch(
+          "/api/auth/logout",
+          {
+            method:"POST"
+          }
+        );
+
+        window.location.href =
+          "/login.html";
+
+      }
+    );
+
+
+  cargarPortal()
+    .catch(
+      err => mensaje(
+        err.message,
+        "error"
+      )
+    );
+
+})();
+
+</script>
+
+
+</body>
+</html>
