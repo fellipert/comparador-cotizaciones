@@ -157,7 +157,7 @@ async function generarExcel(neg, k, filas) {
   const bordes = { top: borde, left: borde, bottom: borde, right: borde };
 
   ws.mergeCells("A1:F1");
-  Object.assign(ws.getCell("A1"), { value: "MERCALDAS - CONTRAPROPUESTA COMERCIAL FRUVER" });
+  Object.assign(ws.getCell("A1"), { value: "MERCALDAS - CONTRAPROPUESTA COMERCIAL FRUVER" + (process.env.APP_ENV === "dev" ? " (PRUEBAS)" : "") });
   ws.getCell("A1").font = { name: "Calibri", size: 17, bold: true, color: { argb: "FFFFFFFF" } };
   ws.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: VERDE } };
   ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };

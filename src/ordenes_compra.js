@@ -49,7 +49,7 @@ function siguienteNumeroOC() {
     db.prepare("UPDATE settings SET value = ? WHERE key = 'oc_consecutivo_v2'").run(String(siguiente));
     return siguiente;
   });
-  return "OC-" + obtenerYAvanzar();
+  return (process.env.APP_ENV === "dev" ? "PRUEBA-OC-" : "OC-") + obtenerYAvanzar();
 }
 
 function getPendientesPorProveedor(cicloId, periodo) {

@@ -16,6 +16,7 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const APP_ENV = process.env.APP_ENV || "produccion";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -30,10 +31,25 @@ app.use(express.json());
 app.use(cookieParser());
 require("./ordenes_compra")(app, requireAdmin);
 require("./negociacion_hoja")(app, requireAdmin);
+const BANNER_PRUEBAS = `(function () {
+  function poner() {
+    var b = document.createElement("div");
+    b.textContent = "ENTORNO DE PRUEBAS: los datos son una copia y nada de aquí afecta a producción";
+    b.style.cssText = "position:sticky;top:0;z-index:99999;background:#b3261e;color:#fff;text-align:center;padding:6px 10px;font:600 13px Calibri,Arial,sans-serif";
+    document.body.insertBefore(b, document.body.firstChild);
+    document.title = "[PRUEBAS] " + document.title;
+  }
+  if (document.body) poner(); else document.addEventListener("DOMContentLoaded", poner);
+})();`;
+// Marca de entorno: en desarrollo agrega una franja roja a cada página; en producción devuelve un script vacío
+app.get("/entorno.js", (req, res) => {
+  res.type("application/javascript").set("Cache-Control", "no-store");
+  res.send(APP_ENV === "dev" ? BANNER_PRUEBAS : "");
+});
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 const SESION_DIAS = 7;
-const COOKIE_NAME = "sesion_token";
+const COOKIE_NAME = process.env.COOKIE_NAME || "sesion_token";
 
 function getUsuarioDeSesion(req) {
   const token = req.cookies && req.cookies[COOKIE_NAME];
