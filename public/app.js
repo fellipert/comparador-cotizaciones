@@ -1261,10 +1261,16 @@
   }
 
   // ---------- configuración: % de contrapropuesta ----------
+  function actualizarTextosPct(p) {
+    const n = Number(p);
+    if (isNaN(n)) return;
+    document.querySelectorAll(".js-pct").forEach((el) => { el.textContent = String(n); });
+  }
   async function loadSettings() {
     const s = await (await api("/api/settings")).json();
     document.getElementById("pctSlider").value = s.contrapropuestaPct;
     document.getElementById("pctValue").textContent = s.contrapropuestaPct.toFixed(1) + "%";
+    actualizarTextosPct(s.contrapropuestaPct);
   }
   document.getElementById("pctSlider").addEventListener("input", (e) => {
     document.getElementById("pctValue").textContent = Number(e.target.value).toFixed(1) + "%";
@@ -1278,6 +1284,7 @@
         body: JSON.stringify({ contrapropuestaPct: pct }),
       });
       toast("% de contrapropuesta actualizado a " + pct.toFixed(1) + "%.");
+      actualizarTextosPct(pct);
       await renderAll();
     } catch (err) {
       toast("No se pudo guardar: " + err.message);

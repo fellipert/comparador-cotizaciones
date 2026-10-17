@@ -6864,8 +6864,8 @@ app.get("/api/por-proveedor/export", async (req, res) => {
 
 
     // Para este formato de contrapropuesta
-    // Mercaldas aplicará siempre 2%.
-    const pct = 2;
+    // Se usa el % de contrapropuesta configurado (1% a 10%).
+    const pct = getContrapropuestaPct();
 
     // =====================================================
     // PRODUCTOS DEL PROVEEDOR + REFERENCIAS DE MERCADO
@@ -6893,7 +6893,7 @@ app.get("/api/por-proveedor/export", async (req, res) => {
 
     // Comparativo general del mercado.
     // Aquí obtenemos el mejor precio por PLU
-    // y la contrapropuesta redondeada al 2%.
+    // y la contrapropuesta redondeada con el % configurado.
     const comparativo =
       computeComparativo(
         quotes,
@@ -7231,7 +7231,7 @@ app.get("/api/por-proveedor/export", async (req, res) => {
         req.query.ciclo ||
         "Actual"
       ) +
-      "   |   Contrapropuesta aplicada: 2%";
+      "   |   Contrapropuesta aplicada: " + getContrapropuestaPct() + "%";
 
 
     ws.getCell("A3").font = {
@@ -7367,7 +7367,7 @@ app.get("/api/por-proveedor/export", async (req, res) => {
 
         // 5. CONTRAPROPUESTA
         // Se usa la contrapropuesta REDONDEADA
-        // calculada por la lógica del sistema al 2%.
+        // calculada por la lógica del sistema con el % configurado.
         ws.getCell(
           fila,
           5
