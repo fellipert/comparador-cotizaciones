@@ -29,8 +29,39 @@ const upload = multer({
 
 app.use(express.json());
 app.use(cookieParser());
+
+// La semana de trabajo manda en todo el sistema: si una consulta de pantalla no trae ciclo, se usa la semana de trabajo.
+const RUTAS_CON_SEMANA_DE_TRABAJO = new Set([
+  "/api/files",
+  "/api/comparativo",
+  "/api/alertas",
+  "/api/export",
+  "/api/por-proveedor",
+  "/api/por-proveedor/export",
+  "/api/producto-referencia"
+]);
+
+app.use((req, res, next) => {
+  try {
+    if (req.method === "GET" && RUTAS_CON_SEMANA_DE_TRABAJO.has(req.path) && !req.query.ciclo) {
+      const semana = obtenerSemanaTrabajo();
+      if (semana) {
+        Object.defineProperty(req, "query", {
+          value: Object.assign({}, req.query, { ciclo: semana.id }),
+          writable: true,
+          configurable: true,
+          enumerable: true
+        });
+      }
+    }
+  } catch (e) {}
+  next();
+});
+
 require("./ordenes_compra")(app, requireAdmin);
 require("./negociacion_hoja")(app, requireAdmin);
+require("./promociones")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c), computeComparativo: (...a) => computeComparativo(...a) });
+require("./mas_caros")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c) });
 const BANNER_PRUEBAS = `(function () {
   function poner() {
     var b = document.createElement("div");
@@ -1515,6 +1546,32 @@ function obtenerCicloActivo() {
   ).get(cicloId) || null;
 }
 
+// ---------------------------------------------------------------------------
+// SEMANA DE TRABAJO: la semana que el equipo interno ve y usa en todo el sistema
+// (se elige en "Cargar cotizaciones"). Es DISTINTA del ciclo activo, que es la semana
+// abierta donde cargan los proveedores. Si nadie ha elegido una, se usa el ciclo activo.
+// ---------------------------------------------------------------------------
+function obtenerSemanaTrabajo() {
+  let fila = null;
+  try {
+    fila = db.prepare("SELECT value FROM settings WHERE key = 'semana_trabajo_id'").get();
+  } catch (e) {}
+  if (fila && fila.value) {
+    const ciclo = db.prepare("SELECT * FROM ciclos WHERE id = ?").get(fila.value);
+    if (ciclo) return ciclo;
+  }
+  return obtenerCicloActivo();
+}
+
+function cicloParaPantalla(ciclo) {
+  if (!ciclo) return null;
+  let efectivo = ciclo.estado;
+  try {
+    if (typeof estadoEfectivoCiclo === "function") efectivo = estadoEfectivoCiclo(ciclo) || ciclo.estado;
+  } catch (e) {}
+  return Object.assign({}, ciclo, { estado_efectivo: efectivo });
+}
+
 function obtenerOCrearCiclo(fechaISO) {
   const ventana = calcularVentanaRecepcion(fechaISO);
   let ciclo = db.prepare("SELECT * FROM ciclos WHERE id = ?").get(ventana.id);
@@ -1554,6 +1611,43 @@ app.get("/api/ciclos/actual", (req, res) => {
   res.json({
     activo: true,
     ciclo
+  });
+});
+
+
+app.get("/api/semana", (req, res) => {
+  const recepcion = obtenerCicloActivo();
+  const trabajo = obtenerSemanaTrabajo();
+
+  res.json({
+    trabajo: cicloParaPantalla(trabajo),
+    recepcion: cicloParaPantalla(recepcion),
+    distinta: !!(trabajo && recepcion && trabajo.id !== recepcion.id)
+  });
+});
+
+app.post("/api/semana", requireAdmin, (req, res) => {
+  const id = String((req.body && req.body.ciclo_id) || "").trim();
+
+  if (!id) {
+    return res.status(400).json({ error: "Falta indicar la semana." });
+  }
+
+  const ciclo = db.prepare("SELECT * FROM ciclos WHERE id = ?").get(id);
+
+  if (!ciclo) {
+    return res.status(404).json({ error: "Esa semana no existe." });
+  }
+
+  guardarSetting("semana_trabajo_id", ciclo.id);
+
+  const recepcion = obtenerCicloActivo();
+
+  res.json({
+    ok: true,
+    trabajo: cicloParaPantalla(ciclo),
+    recepcion: cicloParaPantalla(recepcion),
+    distinta: !!(recepcion && recepcion.id !== ciclo.id)
   });
 });
 
@@ -1672,7 +1766,18 @@ app.post("/api/upload", upload.array("files", 20), (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ error: "No se recibió ningún archivo." });
   }
-  const cicloActual = obtenerCicloActivo();
+  const cicloActual = obtenerSemanaTrabajo();
+
+  // Protección: si la pantalla estaba desactualizada (otro usuario cambió la semana), no se guarda en otra semana por sorpresa.
+  const semanaEsperada = String((req.body && req.body.semana_trabajo) || "").trim();
+  if (cicloActual && semanaEsperada && semanaEsperada !== cicloActual.id) {
+    return res.status(409).json({
+      error:
+        "La semana de trabajo cambió a " + cicloActual.id +
+        " mientras tenías la pantalla abierta (tú veías " + semanaEsperada +
+        "). Actualiza la página antes de cargar."
+    });
+  }
 
   if (!cicloActual) {
     return res.status(409).json({
@@ -1903,7 +2008,7 @@ app.post("/api/proveedor-productos", (req, res) => {
   if (precio !== undefined && precio !== null && precio !== "" && !isNaN(precioNum) && precioNum > 0) {
     const catActual = db.prepare("SELECT producto, presentacion FROM catalogo WHERE codigo = ?").get(cod);
     const hoy = new Date().toISOString().slice(0, 10);
-    const cicloActual = obtenerOCrearCiclo(hoy);
+    const cicloActual = obtenerSemanaTrabajo() || obtenerOCrearCiclo(hoy);
     const fileId = crypto.randomUUID();
     const insertFile = db.prepare(
       "INSERT INTO files (id, name, proveedor, semana, fecha_envio, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)"
@@ -2355,7 +2460,7 @@ app.post("/api/manual", (req, res) => {
   }
 
   const hoy = new Date().toISOString().slice(0, 10);
-  const cicloActual = obtenerOCrearCiclo(hoy);
+  const cicloActual = obtenerSemanaTrabajo() || obtenerOCrearCiclo(hoy);
   const fileId = crypto.randomUUID();
   const insertFile = db.prepare(
     "INSERT INTO files (id, name, proveedor, semana, fecha_envio, uploaded_at, ciclo_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -2473,7 +2578,7 @@ app.post(
           ? db.prepare(
               "SELECT * FROM ciclos WHERE id = ?"
             ).get(cicloSolicitado)
-          : obtenerCicloActivo();
+          : obtenerSemanaTrabajo();
 
       if (!ciclo) {
         return res.status(409).json({
@@ -2877,7 +2982,7 @@ app.get("/api/pedidos-demanda", (req, res) => {
       ? db.prepare(
           "SELECT * FROM ciclos WHERE id = ?"
         ).get(cicloId)
-      : obtenerCicloActivo();
+      : obtenerSemanaTrabajo();
 
   if (!ciclo) {
     return res.status(404).json({
@@ -6279,7 +6384,7 @@ app.get("/api/por-proveedor/plantilla-cotizacion", async (req, res) => {
       });
     }
 
-    const ciclo = obtenerCicloActivo();
+    const ciclo = obtenerSemanaTrabajo();
 
     const portafolio = db.prepare(`
       SELECT
@@ -7510,8 +7615,8 @@ app.get("/api/settings", (req, res) => {
 app.post("/api/settings", (req, res) => {
   const { contrapropuestaPct } = req.body || {};
   const pct = Number(contrapropuestaPct);
-  if (isNaN(pct) || pct < 1.5 || pct > 2) {
-    return res.status(400).json({ error: "El % de contrapropuesta debe estar entre 1.5 y 2." });
+  if (isNaN(pct) || pct < 1 || pct > 10) {
+    return res.status(400).json({ error: "El % de contrapropuesta debe estar entre 1 y 10." });
   }
   db.prepare("INSERT INTO settings (key, value) VALUES ('contrapropuesta_pct', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(String(pct));
