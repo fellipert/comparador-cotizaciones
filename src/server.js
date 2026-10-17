@@ -4336,14 +4336,8 @@ app.post(
           periodo
         );
 
-
-      if (!demanda) {
-
-        return res.status(404).json({
-          error:
-            "No existe demanda para este ciclo y periodo."
-        });
-      }
+      // Si el ciclo no tiene demanda cargada también se guardan los porcentajes
+      // (sin validar contra la lista de productos de la demanda).
 
 
       const wb =
@@ -4530,7 +4524,7 @@ app.post(
             cantidad_requerida
           FROM demanda_pedido_detalles
           WHERE demanda_id = ?
-        `).all(demanda.id);
+        `).all(demanda ? demanda.id : -1);
 
 
       const detallePorCodigo = {};
@@ -4716,7 +4710,7 @@ app.post(
             ];
 
 
-          if (!detalle) {
+          if (demanda && !detalle) {
 
             errores.push(
               "Fila " +
