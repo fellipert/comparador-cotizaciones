@@ -3365,6 +3365,12 @@
 
       await renderPedidos();
 
+      /*refresca-distribucion-tras-demanda*/
+      try {
+        if (typeof cargarPedidoPct === "function") await cargarPedidoPct();
+        else if (window.cargarPedidoPct) await window.cargarPedidoPct();
+      } catch (e2) { console.error("No se pudo refrescar la distribución", e2); }
+
 
     } catch (err) {
 
