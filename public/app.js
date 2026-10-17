@@ -4732,10 +4732,7 @@
 
     } catch (err) {
 
-      toast(
-        "No se pudo cargar: " +
-        err.message
-      );
+      mostrarErroresArchivoPct(err.message);
 
 
     } finally {
@@ -4745,6 +4742,44 @@
     }
   }
 
+
+  function mostrarErroresArchivoPct(msg) {
+    const lineas = String(msg || "").split("\n");
+    if (lineas.length < 2) { toast("No se pudo cargar: " + msg); return; }
+    const previo = document.getElementById("errArchivoPctOverlay");
+    if (previo) previo.remove();
+    const ov = document.createElement("div");
+    ov.id = "errArchivoPctOverlay";
+    ov.setAttribute("style", "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;");
+    const box = document.createElement("div");
+    box.setAttribute("style", "background:#fff;color:#222;border-radius:10px;max-width:680px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.35);");
+    const h = document.createElement("div");
+    h.setAttribute("style", "background:#b3261e;color:#fff;padding:14px 18px;border-radius:10px 10px 0 0;font-weight:700;font-size:16px;");
+    h.textContent = "No se cargó el archivo de distribución";
+    const sub = document.createElement("div");
+    sub.setAttribute("style", "padding:12px 18px 4px;font-size:14px;");
+    sub.textContent = lineas[0];
+    const cuerpo = document.createElement("div");
+    cuerpo.setAttribute("style", "padding:4px 18px 12px;overflow:auto;font-size:13px;line-height:1.5;");
+    lineas.slice(1).forEach(function (l) {
+      const d = document.createElement("div");
+      d.setAttribute("style", "padding:5px 0;border-bottom:1px solid #eee;");
+      d.textContent = l;
+      cuerpo.appendChild(d);
+    });
+    const pie = document.createElement("div");
+    pie.setAttribute("style", "padding:10px 18px 14px;text-align:right;border-top:1px solid #eee;");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Entendido";
+    b.setAttribute("style", "background:#b3261e;color:#fff;border:0;border-radius:6px;padding:8px 18px;font-size:14px;cursor:pointer;");
+    b.onclick = function () { ov.remove(); };
+    pie.appendChild(b);
+    box.appendChild(h); box.appendChild(sub); box.appendChild(cuerpo); box.appendChild(pie);
+    ov.appendChild(box);
+    ov.addEventListener("click", function (e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
 
   async function aplicarPedidoPct() {
 

@@ -4470,7 +4470,7 @@ app.post(
         }
 
 
-        const objeto = {};
+        const objeto = { "__fila": i + 1 };
 
 
         cabeceras.forEach(
@@ -4651,8 +4651,7 @@ app.post(
           }
 
 
-          const nFila =
-            index + 2;
+          const nFila = fila["__fila"] || (index + 2);
 
 
           if (!codigo) {
@@ -4660,7 +4659,7 @@ app.post(
             errores.push(
               "Fila " +
               nFila +
-              ": falta PLU."
+              " (Excel): falta PLU."
             );
 
             return;
@@ -4672,7 +4671,7 @@ app.post(
             errores.push(
               "Fila " +
               nFila +
-              ": falta proveedor."
+              " (Excel): falta proveedor."
             );
 
             return;
@@ -4695,9 +4694,7 @@ app.post(
           ) {
 
             errores.push(
-              "Fila " +
-              nFila +
-              ": porcentaje inválido."
+              "Fila " + nFila + " (Excel) · PLU " + codigo + " · " + proveedor + ": el porcentaje «" + String(porcentajeRaw).trim() + "» no es válido (debe estar entre 0 y 100)."
             );
 
             return;
@@ -4715,7 +4712,7 @@ app.post(
             errores.push(
               "Fila " +
               nFila +
-              ": el PLU " +
+              " (Excel): el PLU " +
               codigo +
               " no está en la demanda."
             );
@@ -4743,7 +4740,7 @@ app.post(
             errores.push(
               "Fila " +
               nFila +
-              ": " +
+              " (Excel): " +
               proveedor +
               " no está activo para el PLU " +
               codigo +
@@ -4767,7 +4764,7 @@ app.post(
             errores.push(
               "Fila " +
               nFila +
-              ": combinación PLU/proveedor duplicada."
+              " (Excel): combinación PLU/proveedor duplicada."
             );
 
             return;
@@ -4788,11 +4785,13 @@ app.post(
 
       if (errores.length) {
 
+        const _lista = errores.slice(0, 30);
         return res.status(400).json({
           error:
-            "El archivo tiene errores.",
-          errores:
-            errores.slice(0, 30)
+            "El archivo tiene " + errores.length + " error(es) y no se guardó nada:\n" +
+            _lista.join("\n") +
+            (errores.length > 30 ? "\n... y " + (errores.length - 30) + " más." : ""),
+          errores: _lista
         });
       }
 
