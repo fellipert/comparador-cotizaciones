@@ -3882,17 +3882,16 @@ app.get(
         );
 
 
-      if (!demanda) {
-
-        return res.status(404).json({
-          error:
-            "No existe una demanda cargada para este ciclo y periodo."
-        });
-      }
+      // Sin demanda: se genera igual (productos cotizados en el ciclo, sin cantidades).
 
 
-      const detalles =
-        db.prepare(`
+      const sinDemandaPct = (cic) => {
+        let f = db.prepare(`SELECT codigo, MIN(producto) AS producto FROM quotes WHERE ciclo_id = ? AND codigo IS NOT NULL AND TRIM(codigo) <> '' GROUP BY codigo ORDER BY producto`).all(cic);
+        if (!f.length) f = db.prepare(`SELECT pp.codigo AS codigo, COALESCE(MIN(c.producto), '') AS producto FROM proveedor_productos pp LEFT JOIN catalogo c ON c.codigo = pp.codigo WHERE pp.activo = 1 GROUP BY pp.codigo ORDER BY producto`).all();
+        return f.map((r) => ({ id: null, codigo: r.codigo, producto: r.producto, cantidad_requerida: null }));
+      };
+      const detalles = demanda
+        ? db.prepare(`
           SELECT
             id,
             codigo,
@@ -3901,7 +3900,8 @@ app.get(
           FROM demanda_pedido_detalles
           WHERE demanda_id = ?
           ORDER BY producto
-        `).all(demanda.id);
+        `).all(demanda.id)
+        : sinDemandaPct(ciclo);
 
 
       const pctGuardados =
@@ -4089,14 +4089,15 @@ app.get(
 
       for (const d of detalles) {
 
-        const proveedores =
-          db.prepare(`
+        const proveedores = demanda
+          ? db.prepare(`
             SELECT DISTINCT proveedor
             FROM proveedor_productos
             WHERE codigo = ?
               AND activo = 1
             ORDER BY proveedor
-          `).all(d.codigo);
+          `).all(d.codigo)
+          : db.prepare(`SELECT proveedor FROM (SELECT proveedor FROM proveedor_productos WHERE codigo = ? AND activo = 1 UNION SELECT proveedor FROM quotes WHERE codigo = ? AND ciclo_id = ?) WHERE proveedor IS NOT NULL AND TRIM(proveedor) <> '' ORDER BY proveedor`).all(d.codigo, d.codigo, ciclo);
 
 
         for (const pr of proveedores) {
@@ -4137,9 +4138,7 @@ app.get(
             fila,
             5
           ).value =
-            Number(
-              d.cantidad_requerida || 0
-            );
+            (demanda ? Number(d.cantidad_requerida || 0) : null);
 
 
           for (
