@@ -38,12 +38,845 @@
     return res;
   }
 
+  // ===== SEMANA DE TRABAJO (única para todo el sistema) =====
+  // Se elige en "Cargar cotizaciones" y la usan TODOS los módulos. No es lo mismo que la
+  // "semana de recepción" (el ciclo activo), que es donde cargan los proveedores.
+  function stEstado() {
+    if (!window.__semanaTrabajo) window.__semanaTrabajo = { trabajo: null, recepcion: null, ciclos: [], pendiente: null };
+    return window.__semanaTrabajo;
+  }
+
+  function stEtiqueta(c) {
+    const id = c ? String(c.id || c) : "";
+    const m = /^COT-(\d{4})-(\d{1,2})$/.exec(id);
+    return m ? "Semana " + Number(m[2]) + " (" + id + ")" : (id || "—");
+  }
+
+  function stEstadoDe(c) { return c ? String(c.estado_efectivo || c.estado || "") : ""; }
+  function stTerminada(c) { return /^(FINALIZADO|CERRADO)$/i.test(stEstadoDe(c)); }
+
+  function stDistinta() {
+    const st = stEstado();
+    return !!(st.trabajo && st.recepcion && st.trabajo.id !== st.recepcion.id);
+  }
+
+  async function stCargar() {
+    const st = stEstado();
+    const semana = await (await api("/api/semana")).json();
+    const ciclos = await (await api("/api/ciclos")).json();
+    st.trabajo = semana.trabajo || null;
+    st.recepcion = semana.recepcion || null;
+    st.ciclos = Array.isArray(ciclos)
+      ? ciclos.slice().sort((a, b) => String(b.id).localeCompare(String(a.id)))
+      : [];
+    return st;
+  }
+
+  async function stEstablecer(id) {
+    const r = await api("/api/semana", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ciclo_id: id })
+    });
+    const data = await r.json();
+    if (data && data.error) throw new Error(data.error);
+    const aviso = document.getElementById("stAviso");
+    if (aviso) aviso.remove();
+    stEstado().pendiente = null;
+    await stCargar();
+    stAplicarSelectores();
+  }
+
+  // Deja un <select> con las semanas existentes y el valor pedido. Devuelve true si el valor cambió.
+  function stFijar(select, valor, opciones) {
+    if (!select) return false;
+    const actuales = Array.from(select.options).map((o) => o.value).join("|");
+    if (actuales !== opciones.map((o) => o.value).join("|")) {
+      select.innerHTML = "";
+      opciones.forEach((o) => {
+        const op = document.createElement("option");
+        op.value = o.value;
+        op.textContent = o.label;
+        select.appendChild(op);
+      });
+    }
+    const antes = select.value;
+    if (valor && Array.from(select.options).some((o) => o.value === valor)) select.value = valor;
+    return antes !== select.value;
+  }
+
+  // Para selectores cuyas opciones arma otro código: solo asegura que exista la semana y la elige.
+  function stForzar(select, valor) {
+    if (!select || !valor) return false;
+    if (!Array.from(select.options).some((o) => o.value === valor)) {
+      const op = document.createElement("option");
+      op.value = valor;
+      op.textContent = valor;
+      select.appendChild(op);
+    }
+    const antes = select.value;
+    select.value = valor;
+    return antes !== select.value;
+  }
+
+  function stOcultarSelectores() {
+    ["cicloFiltroSelect", "pedidoCicloSelect", "negUniCiclo"].forEach((id) => {
+      const s = document.getElementById(id);
+      if (!s) return;
+      s.style.display = "none";
+      const previo = s.previousElementSibling;
+      if (previo && previo.tagName === "LABEL") previo.style.display = "none";
+    });
+  }
+
+  function stAplicarSelectores() {
+    const st = stEstado();
+    const id = st.trabajo ? st.trabajo.id : "";
+    const opciones = st.ciclos.map((c) => ({ value: c.id, label: c.id + " (" + (c.estado || "") + ")" }));
+    const cambiados = [];
+    const filtro = document.getElementById("cicloFiltroSelect");
+    const pedidos = document.getElementById("pedidoCicloSelect");
+    const negociacion = document.getElementById("negUniCiclo");
+    if (stFijar(filtro, id, opciones)) cambiados.push(filtro);
+    if (stFijar(pedidos, id, opciones)) cambiados.push(pedidos);
+    if (stForzar(negociacion, id)) cambiados.push(negociacion);
+    stOcultarSelectores();
+    stActualizarTarjeta();
+    stActualizarAvisos();
+    cambiados.forEach((s) => s.dispatchEvent(new Event("change", { bubbles: true })));
+  }
+
+  // Tras abrir cualquier pestaña, vuelve a alinear los selectores que otro código haya rearmado.
+  function stReconciliar() {
+    const st = stEstado();
+    const id = st.trabajo ? st.trabajo.id : "";
+    if (!id) return;
+    ["cicloFiltroSelect", "pedidoCicloSelect", "negUniCiclo"].forEach((nombre) => {
+      const s = document.getElementById(nombre);
+      if (s && s.value !== id && stForzar(s, id)) s.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
+  function stEstilos() {
+    if (document.getElementById("stEstilos")) return;
+    const s = document.createElement("style");
+    s.id = "stEstilos";
+    s.textContent =
+      ".st-chip{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin:0 0 12px;padding:8px 12px;border-radius:8px;font-size:.86rem;border:1px solid;}" +
+      ".st-ok{background:#e8f6ee;border-color:#a8d8b9;color:#1b5e36;}" +
+      ".st-warn{background:#fff3d6;border-color:#f0c36b;color:#7a4b00;}" +
+      ".st-chip a{color:inherit;text-decoration:underline;cursor:pointer;margin-left:auto;}" +
+      ".st-sub{color:var(--ink-soft,#666);font-size:.85rem;margin:4px 0 10px;}" +
+      ".st-fila{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}" +
+      ".st-recep{margin-top:10px;padding:8px 12px;border-radius:8px;font-size:.86rem;border:1px solid;}" +
+      ".st-recep button{margin-left:10px;}" +
+      ".st-nota{margin:14px 0 6px;font-size:.85rem;color:var(--ink-soft,#666);}" +
+      ".st-aviso{position:fixed;top:0;left:0;right:0;z-index:9999;padding:10px 16px;background:#7a4b00;color:#fff;display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:.9rem;}" +
+      ".st-aviso button{padding:4px 14px;border-radius:6px;border:0;cursor:pointer;font-weight:600;}";
+    document.head.appendChild(s);
+  }
+
+  function stInyectarTarjeta() {
+    const cargar = document.getElementById("tab-cargar");
+    if (!cargar || document.getElementById("stCard")) return;
+    const card = document.createElement("div");
+    card.className = "card";
+    card.id = "stCard";
+    card.innerHTML =
+      '<div style="font-weight:700;font-size:1.05rem;">Semana de trabajo</div>' +
+      '<p class="st-sub">Todo el sistema muestra y usa esta semana: Comparativo, Alertas, Por Proveedor, Negociación, Pedidos y Órdenes de Compra. ' +
+      'Es la misma para todos los usuarios. Cambiarla no abre ni cierra nada.</p>' +
+      '<div class="st-fila"><select id="semanaTrabajoSelect" class="manual-input" style="min-width:300px;"></select>' +
+      '<span id="stEstadoTxt" class="st-sub" style="margin:0;"></span></div>' +
+      '<div id="stRecepTxt" class="st-recep"></div>';
+    cargar.insertBefore(card, cargar.firstChild);
+    document.getElementById("semanaTrabajoSelect").addEventListener("change", stAlElegir);
+
+    const abrir = document.getElementById("btnAbrirCiclo");
+    const tarjetaRecepcion = abrir && abrir.closest(".card");
+    if (tarjetaRecepcion && !document.getElementById("stNotaRecep")) {
+      const nota = document.createElement("div");
+      nota.id = "stNotaRecep";
+      nota.className = "st-nota";
+      nota.textContent = "Recepción de proveedores: la semana que abres o cierras aquí es donde cargan los proveedores. " +
+        "Al abrir una semana, también pasa a ser la semana de trabajo.";
+      tarjetaRecepcion.parentNode.insertBefore(nota, tarjetaRecepcion);
+    }
+  }
+
+  async function stAlElegir(ev) {
+    const id = ev.target.value;
+    if (!id) return;
+    try {
+      await stEstablecer(id);
+      toast("Semana de trabajo: " + stEtiqueta(stEstado().trabajo));
+    } catch (e) {
+      toast("No se pudo cambiar la semana: " + e.message);
+      try { await stCargar(); stAplicarSelectores(); } catch (e2) {}
+    }
+  }
+
+  function stActualizarTarjeta() {
+    const sel = document.getElementById("semanaTrabajoSelect");
+    if (!sel) return;
+    const st = stEstado();
+    stFijar(sel, st.trabajo ? st.trabajo.id : "", st.ciclos.map((c) => ({
+      value: c.id,
+      label: stEtiqueta(c).replace(/ \(COT-.*\)$/, "") + " · " + c.id + " · " + (c.estado || "")
+    })));
+    const txt = document.getElementById("stEstadoTxt");
+    if (txt) txt.textContent = st.trabajo ? "Estado: " + stEstadoDe(st.trabajo) : "";
+    const rec = document.getElementById("stRecepTxt");
+    if (!rec) return;
+    rec.innerHTML = "";
+    if (!st.trabajo) {
+      rec.className = "st-recep st-warn";
+      rec.textContent = "Aún no hay una semana. Abre una en la tarjeta de recepción, más abajo.";
+    } else if (!st.recepcion) {
+      rec.className = "st-recep st-warn";
+      rec.textContent = "No hay una semana abierta para los proveedores. Ábrela más abajo.";
+    } else if (stDistinta()) {
+      rec.className = "st-recep st-warn";
+      rec.appendChild(document.createTextNode("⚠ Los proveedores están cargando en la " + stEtiqueta(st.recepcion) + ", no en la semana de trabajo."));
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn-secondary";
+      b.textContent = "Ir a la semana de recepción";
+      b.addEventListener("click", () => stAlElegir({ target: { value: st.recepcion.id } }));
+      rec.appendChild(b);
+    } else {
+      rec.className = "st-recep st-ok";
+      rec.textContent = "✓ Es la misma semana en la que cargan los proveedores.";
+    }
+  }
+
+  const ST_TABS_CON_AVISO = ["comparativo", "alertas", "por-proveedor", "hoja-negociacion", "negociacion", "pedidos", "configuracion", "ordenes-compra"];
+
+  function stInyectarAvisos() {
+    ST_TABS_CON_AVISO.forEach((t) => {
+      const seccion = document.getElementById("tab-" + t);
+      if (!seccion || seccion.querySelector("[data-st-chip]")) return;
+      const chip = document.createElement("div");
+      chip.setAttribute("data-st-chip", "1");
+      seccion.insertBefore(chip, seccion.firstChild);
+    });
+  }
+
+  function stActualizarAvisos() {
+    const st = stEstado();
+    document.querySelectorAll("[data-st-chip]").forEach((el) => {
+      el.innerHTML = "";
+      el.className = "st-chip " + (stDistinta() || !st.trabajo ? "st-warn" : "st-ok");
+      const t = document.createElement("span");
+      if (st.trabajo) {
+        const b = document.createElement("b");
+        b.textContent = "Semana de trabajo: " + stEtiqueta(st.trabajo).replace(/^Semana /, "");
+        t.appendChild(b);
+        const e = stEstadoDe(st.trabajo);
+        if (e) t.appendChild(document.createTextNode(" · " + e));
+      } else {
+        t.textContent = "Sin semana de trabajo. Abre una semana en «Cargar cotizaciones».";
+      }
+      el.appendChild(t);
+      if (stDistinta()) {
+        const w = document.createElement("span");
+        w.textContent = "⚠ Los proveedores están cargando en la " + stEtiqueta(st.recepcion);
+        el.appendChild(w);
+      }
+      const a = document.createElement("a");
+      a.textContent = "Cambiar en «Cargar cotizaciones»";
+      a.addEventListener("click", () => {
+        const btn = document.querySelector('nav.tabs button[data-tab="cargar"]');
+        if (btn) btn.click();
+      });
+      el.appendChild(a);
+    });
+  }
+
+  // Si otro usuario cambia la semana, avisa y deja que tú actualices (no mueve la pantalla sola).
+  function stMostrarAviso(data) {
+    stEstado().pendiente = data;
+    let el = document.getElementById("stAviso");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "stAviso";
+      el.className = "st-aviso";
+      document.body.appendChild(el);
+    }
+    el.innerHTML = "";
+    const t = document.createElement("span");
+    t.textContent = "La semana de trabajo cambió a " + stEtiqueta(data.trabajo) + " (la cambió otro usuario).";
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Actualizar";
+    b.addEventListener("click", async () => {
+      el.remove();
+      stEstado().pendiente = null;
+      try { await stCargar(); stAplicarSelectores(); } catch (e) { toast("No se pudo actualizar la semana: " + e.message); }
+    });
+    el.appendChild(t);
+    el.appendChild(b);
+  }
+
+  async function stRevisar() {
+    if (document.hidden) return;
+    try {
+      const data = await (await api("/api/semana")).json();
+      const st = stEstado();
+      const nuevo = data.trabajo ? data.trabajo.id : null;
+      const actual = st.trabajo ? st.trabajo.id : null;
+      st.recepcion = data.recepcion || null;
+      if (nuevo !== actual) {
+        stMostrarAviso(data);
+      } else {
+        const aviso = document.getElementById("stAviso");
+        if (aviso) aviso.remove();
+        stActualizarTarjeta();
+        stActualizarAvisos();
+      }
+    } catch (e) {}
+  }
+
+  let stIniciado = false;
+  async function stIniciar() {
+    if (stIniciado) return;
+    stIniciado = true;
+    stEstilos();
+    stInyectarTarjeta();
+    stInyectarAvisos();
+    stOcultarSelectores();
+    document.querySelectorAll("nav.tabs button[data-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setTimeout(stReconciliar, 250);
+        setTimeout(stReconciliar, 1000);
+      });
+    });
+    try { await stCargar(); stAplicarSelectores(); } catch (e) {}
+    setInterval(stRevisar, Number(window.__ST_POLL_MS) || 20000);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) stRevisar(); });
+  }
+  setTimeout(stIniciar, 0);
+  // ===== FIN SEMANA DE TRABAJO =====
+
+  // ===== PRODUCTOS EN PROMOCIÓN =====
+  // Productos cuyo PRECIO FINAL (acordado en la negociación) bajó 15% o más frente al mejor precio de la semana anterior.
+  const PROMO = { datos: null, filtro: "todas", texto: "", error: "" };
+
+  function promoMoneda(n) {
+    return n == null ? "—" : "$" + Number(n).toLocaleString("es-CO", { maximumFractionDigits: 2 });
+  }
+
+  function promoPorcentaje(n) {
+    return Number(n).toLocaleString("es-CO", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+  }
+
+  function promoCiclo() {
+    const st = typeof stEstado === "function" ? stEstado() : null;
+    if (st && st.trabajo && st.trabajo.id) return st.trabajo.id;
+    const f = document.getElementById("cicloFiltroSelect");
+    return f && f.value ? f.value : "";
+  }
+
+  function promoVisible() {
+    const s = document.getElementById("tab-promociones");
+    return !!s && s.style.display === "block";
+  }
+
+  async function promoCargar() {
+    const ciclo = promoCiclo();
+    const r = await api("/api/promociones" + (ciclo ? "?ciclo=" + encodeURIComponent(ciclo) : ""));
+    const d = await r.json();
+    if (d && d.error) throw new Error(d.error);
+    PROMO.datos = d;
+    PROMO.error = "";
+    return d;
+  }
+
+  function promoPintarConteo() {
+    const el = document.getElementById("countPromos");
+    if (!el) return;
+    const n = PROMO.datos && PROMO.datos.resumen ? PROMO.datos.resumen.promociones : 0;
+    el.textContent = String(n || 0);
+    el.style.background = n > 0 ? "#c2410c" : "";
+    el.style.color = n > 0 ? "#fff" : "";
+  }
+
+  async function promoRefrescar() {
+    if (document.hidden && !promoVisible()) return;
+    try {
+      await promoCargar();
+    } catch (e) {
+      PROMO.error = e.message || "No se pudieron calcular las promociones.";
+      PROMO.datos = null;
+    }
+    promoPintarConteo();
+    if (promoVisible()) promoPintar();
+  }
+
+  async function renderPromociones() {
+    await promoRefrescar();
+  }
+
+  function promoEstilos() {
+    if (document.getElementById("promoEstilos")) return;
+    const s = document.createElement("style");
+    s.id = "promoEstilos";
+    s.textContent =
+      ".promo-sub{color:var(--ink-soft,#666);font-size:.85rem;margin:3px 0 0;}" +
+      ".promo-cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}" +
+      ".promo-resumen{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;}" +
+      ".promo-caja{flex:1 1 150px;border:1px solid #ddd;border-radius:8px;padding:10px 12px;}" +
+      ".promo-caja b{display:block;font-size:1.5rem;line-height:1.2;}" +
+      ".promo-caja span{font-size:.8rem;color:var(--ink-soft,#666);}" +
+      ".promo-aviso{margin:8px 0;padding:8px 12px;border-radius:8px;font-size:.88rem;border:1px solid #f0c36b;background:#fff3d6;color:#7a4b00;}" +
+      ".promo-info{margin:8px 0;padding:8px 12px;border-radius:8px;font-size:.88rem;border:1px solid #ddd;background:#f6f7f8;color:#444;}" +
+      ".promo-filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0;}" +
+      ".promo-filtros input{min-width:220px;}" +
+      ".promo-tabla{width:100%;border-collapse:collapse;font-size:.88rem;}" +
+      ".promo-tabla th,.promo-tabla td{padding:7px 10px;border-bottom:1px solid #e5e5e5;text-align:left;vertical-align:top;}" +
+      ".promo-tabla th{font-size:.78rem;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-soft,#666);}" +
+      ".promo-tabla .num{text-align:right;white-space:nowrap;}" +
+      ".promo-nivel{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.76rem;font-weight:700;white-space:nowrap;}" +
+      ".promo-fuerte{background:#fde7d9;color:#9a3412;border:1px solid #f4b793;}" +
+      ".promo-normal{background:#e8f6ee;color:#1b5e36;border:1px solid #a8d8b9;}";
+    document.head.appendChild(s);
+  }
+
+  function promoFilasVisibles() {
+    const d = PROMO.datos;
+    if (!d) return [];
+    const t = PROMO.texto.trim().toLowerCase();
+    return d.filas.filter((f) => {
+      if (PROMO.filtro === "fuerte" && f.nivel !== "fuerte") return false;
+      if (PROMO.filtro === "promocion" && f.nivel !== "promocion") return false;
+      if (!t) return true;
+      return (f.producto + " " + f.codigo + " " + f.proveedor + " " + f.presentacion).toLowerCase().includes(t);
+    });
+  }
+
+  function promoPintarTabla() {
+    const cont = document.getElementById("promoTabla");
+    if (!cont || !PROMO.datos) return;
+    const filas = promoFilasVisibles();
+    if (!filas.length) {
+      cont.innerHTML = PROMO.datos.filas.length
+        ? '<p class="promo-sub">Ningún producto coincide con el filtro.</p>'
+        : "";
+      return;
+    }
+    cont.innerHTML =
+      '<div style="overflow-x:auto;"><table class="promo-tabla"><thead><tr>' +
+      "<th>Nivel</th><th>Producto</th><th>Proveedor</th>" +
+      '<th class="num">Precio final</th><th class="num">Mejor precio semana anterior</th><th class="num">Ahorro por unidad</th><th class="num">Baja</th>' +
+      "</tr></thead><tbody>" +
+      filas
+        .map(
+          (f) =>
+            "<tr>" +
+            '<td><span class="promo-nivel ' + (f.nivel === "fuerte" ? "promo-fuerte" : "promo-normal") + '">' + (f.nivel === "fuerte" ? "Promoción fuerte" : "Promoción") + "</span></td>" +
+            "<td><b>" + esc(f.producto) + '</b><div class="promo-sub">Cód. ' + esc(f.codigo) + (f.presentacion ? " · " + esc(f.presentacion) : "") + "</div></td>" +
+            "<td>" + esc(f.proveedor) + "</td>" +
+            '<td class="num"><b>' + promoMoneda(f.precio_final) + "</b></td>" +
+            '<td class="num">' + promoMoneda(f.referencia) + '<div class="promo-sub">' + esc(f.referencia_proveedor || "—") + " · " + esc(f.referencia_origen) + "</div></td>" +
+            '<td class="num">' + promoMoneda(f.ahorro) + "</td>" +
+            '<td class="num"><b>' + promoPorcentaje(f.baja_pct) + "</b></td>" +
+            "</tr>"
+        )
+        .join("") +
+      "</tbody></table></div>";
+  }
+
+  function promoPintar() {
+    const raiz = document.getElementById("promoRaiz");
+    if (!raiz) return;
+    const d = PROMO.datos;
+    if (!d) {
+      raiz.innerHTML = '<div class="card"><p class="promo-sub">' + (PROMO.error ? esc(PROMO.error) : "Cargando…") + "</p></div>";
+      return;
+    }
+    const r = d.resumen;
+    const u = d.umbrales;
+    const vigencia = d.ciclo.fecha_inicio_vigencia ? " · Vigencia: " + esc(d.ciclo.fecha_inicio_vigencia) + " al " + esc(d.ciclo.fecha_fin_vigencia || "—") : "";
+    const avisos = [];
+    if (!d.anterior || !d.anterior.existe) {
+      avisos.push('<div class="promo-aviso">No hay una semana anterior cargada' + (d.anterior ? " (" + esc(d.anterior.id) + ")" : "") + ". Sin ella no se puede comparar.</div>");
+    } else if (r.evaluados === 0) {
+      avisos.push('<div class="promo-info">Todavía no hay precios finales en esta semana. Cuando cierres precios finales en Negociación (por Excel o a mano), aparecerán aquí.</div>');
+    } else if (!d.filas.length) {
+      avisos.push('<div class="promo-info">Ningún producto con precio final bajó ' + u.promocion + "% o más frente a la semana anterior.</div>");
+    }
+    if (r.sin_referencia > 0) avisos.push('<div class="promo-info">' + (r.sin_referencia === 1 ? "1 producto con precio final no tiene precio la semana anterior, así que no se puede comparar." : r.sin_referencia + " productos con precio final no tienen precio la semana anterior, así que no se pueden comparar.") + "</div>");
+    if (r.sin_precio_final > 0) avisos.push('<div class="promo-info">' + (r.sin_precio_final === 1 ? "1 producto de las negociaciones de esta semana todavía no tiene precio final y no se evalúa." : r.sin_precio_final + " productos de las negociaciones de esta semana todavía no tienen precio final y no se evalúan.") + "</div>");
+
+    const boton = (clave, texto) =>
+      '<button type="button" class="' + (PROMO.filtro === clave ? "btn-primary" : "btn-secondary") + '" data-promo-filtro="' + clave + '">' + texto + "</button>";
+
+    raiz.innerHTML =
+      '<div class="card">' +
+      '<div class="promo-cabecera"><div><div style="font-weight:700;font-size:1.05rem;">Productos en promoción</div>' +
+      '<p class="promo-sub">Productos cuyo precio final bajó ' + u.promocion + "% o más frente al mejor precio de la semana anterior" + (d.anterior ? " (" + esc(d.anterior.id) + ")" : "") + ".</p>" +
+      '<p class="promo-sub">' + esc(d.ciclo.etiqueta) + vigencia + "</p></div>" +
+      '<button type="button" class="btn-primary" id="promoExportar">Exportar a Excel</button></div>' +
+      '<div class="promo-resumen">' +
+      '<div class="promo-caja"><b>' + r.fuertes + "</b><span>Promoción fuerte (" + u.fuerte + "% o más)</span></div>" +
+      '<div class="promo-caja"><b>' + r.normales + "</b><span>Promoción (" + u.promocion + "% a menos de " + u.fuerte + "%)</span></div>" +
+      '<div class="promo-caja"><b>' + r.evaluados + "</b><span>Productos con precio final evaluados</span></div>" +
+      '<div class="promo-caja"><b>' + r.sin_precio_final + "</b><span>Sin precio final todavía</span></div>" +
+      "</div>" +
+      avisos.join("") +
+      '<div class="promo-filtros">' +
+      boton("todas", "Todas (" + d.filas.length + ")") + boton("fuerte", "Promoción fuerte (" + r.fuertes + ")") + boton("promocion", "Promoción (" + r.normales + ")") +
+      '<input type="text" class="manual-input" id="promoBuscar" placeholder="Buscar producto, código o proveedor…" value="' + esc(PROMO.texto) + '">' +
+      "</div>" +
+      '<div id="promoTabla"></div>' +
+      "</div>";
+    promoPintarTabla();
+  }
+
+  function promoClic(e) {
+    const filtro = e.target.closest && e.target.closest("[data-promo-filtro]");
+    if (filtro) {
+      PROMO.filtro = filtro.getAttribute("data-promo-filtro");
+      promoPintar();
+      return;
+    }
+    if (e.target.closest && e.target.closest("#promoExportar")) {
+      const ciclo = promoCiclo();
+      window.location.href = "/api/promociones/exportar" + (ciclo ? "?ciclo=" + encodeURIComponent(ciclo) : "");
+    }
+  }
+
+  function promoEntrada(e) {
+    if (e.target && e.target.id === "promoBuscar") {
+      PROMO.texto = e.target.value;
+      promoPintarTabla();
+    }
+  }
+
+  let promoIniciado = false;
+  function promoIniciar() {
+    if (promoIniciado) return;
+    promoIniciado = true;
+    promoEstilos();
+    const raiz = document.getElementById("promoRaiz");
+    if (raiz) {
+      raiz.addEventListener("click", promoClic);
+      raiz.addEventListener("input", promoEntrada);
+    }
+    // Cuando cambia la semana de trabajo, se recalcula (el selector oculto avisa con "change").
+    document.addEventListener("change", (e) => {
+      if (e.target && e.target.id === "cicloFiltroSelect") promoRefrescar();
+    });
+    // Al moverte entre módulos se actualiza el número de la insignia.
+    document.querySelectorAll("nav.tabs button[data-tab]").forEach((b) => {
+      if (b.dataset.tab !== "promociones") b.addEventListener("click", () => setTimeout(promoRefrescar, 500));
+    });
+    setTimeout(promoRefrescar, 1500);
+    setInterval(promoRefrescar, Number(window.__PROMO_MS) || 45000);
+  }
+  setTimeout(promoIniciar, 0);
+  // ===== FIN PRODUCTOS EN PROMOCIÓN =====
+
+  // ===== LOS MÁS CAROS DE LA SEMANA (recuadro en Alertas, por proveedor) =====
+  // Muestra el proveedor más caro de la semana de trabajo. Al hacer clic en un proveedor se ven sus productos
+  // que están por encima de la propuesta más barata de cada uno.
+  const MC = { datos: null, error: "", seleccion: null, detalle: null, detalleError: "", verTodos: false, huellaResumen: "", huellaDetalle: "" };
+
+  function mcMoneda(n) {
+    return n == null ? "—" : "$" + Number(n).toLocaleString("es-CO", { maximumFractionDigits: 2 });
+  }
+
+  function mcPorcentaje(n) {
+    return Number(n).toLocaleString("es-CO", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+  }
+
+  function mcCiclo() {
+    const st = typeof stEstado === "function" ? stEstado() : null;
+    if (st && st.trabajo && st.trabajo.id) return st.trabajo.id;
+    const f = document.getElementById("cicloFiltroSelect");
+    return f && f.value ? f.value : "";
+  }
+
+  function mcVisible() {
+    const s = document.getElementById("tab-alertas");
+    return !!s && s.style.display === "block";
+  }
+
+  async function mcCargar() {
+    const ciclo = mcCiclo();
+    const r = await api("/api/alertas/mas-caros" + (ciclo ? "?ciclo=" + encodeURIComponent(ciclo) : ""));
+    const d = await r.json();
+    if (d && d.error) throw new Error(d.error);
+    MC.datos = d;
+    MC.error = "";
+    // Si el proveedor elegido ya no está en la lista (por ejemplo, cambió la semana), se cierra su detalle.
+    if (MC.seleccion && !d.proveedores.some((p) => p.proveedor === MC.seleccion)) {
+      MC.seleccion = null;
+      MC.detalle = null;
+    }
+  }
+
+  async function mcCargarDetalle() {
+    if (!MC.seleccion) return;
+    const ciclo = mcCiclo();
+    const nombre = MC.seleccion;
+    const r = await api("/api/alertas/mas-caros/proveedor?proveedor=" + encodeURIComponent(nombre) + (ciclo ? "&ciclo=" + encodeURIComponent(ciclo) : ""));
+    const d = await r.json();
+    if (nombre !== MC.seleccion) return;
+    if (d && d.error) throw new Error(d.error);
+    MC.detalle = d;
+    MC.detalleError = "";
+  }
+
+  function mcEstilos() {
+    if (document.getElementById("mcEstilos")) return;
+    const s = document.createElement("style");
+    s.id = "mcEstilos";
+    s.textContent =
+      ".mc-caja{border-left:4px solid #c2410c;}" +
+      ".mc-titulo{font-weight:700;font-size:1.05rem;}" +
+      ".mc-sub{color:var(--ink-soft,#666);font-size:.85rem;margin:3px 0 0;}" +
+      ".mc-principal{display:block;width:100%;text-align:left;font:inherit;cursor:pointer;margin-top:12px;border:1px solid #fdba74;background:#fff7ed;border-radius:8px;padding:12px 14px;color:inherit;}" +
+      ".mc-principal:hover,.mc-principal.mc-activa{border-color:#c2410c;background:#ffedd5;}" +
+      ".mc-etq{font-size:.76rem;text-transform:uppercase;letter-spacing:.04em;color:#9a3412;font-weight:700;}" +
+      ".mc-nombre{font-size:1.3rem;font-weight:700;margin:4px 0 2px;}" +
+      ".mc-dato{font-size:.9rem;margin:3px 0;}" +
+      ".mc-dato b.mc-pct{color:#c2410c;font-size:1.05rem;}" +
+      ".mc-ver{margin-top:8px;font-size:.85rem;font-weight:700;color:#9a3412;}" +
+      ".mc-lista{margin-top:12px;max-height:260px;overflow:auto;border:1px solid #e5e5e5;border-radius:8px;}" +
+      ".mc-fila{display:flex;justify-content:space-between;gap:12px;align-items:center;width:100%;text-align:left;font:inherit;cursor:pointer;border:0;border-bottom:1px solid #eee;background:transparent;padding:8px 12px;color:inherit;}" +
+      ".mc-fila:hover,.mc-fila.mc-activa{background:#fff7ed;}" +
+      ".mc-fila span.mc-num{white-space:nowrap;color:var(--ink-soft,#666);font-size:.85rem;}" +
+      ".mc-detalle-caja{margin-top:14px;border-top:2px solid #fdba74;padding-top:12px;}" +
+      ".mc-detalle-cab{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;}" +
+      ".mc-tabla{width:100%;border-collapse:collapse;font-size:.88rem;margin-top:10px;}" +
+      ".mc-tabla th,.mc-tabla td{padding:7px 10px;border-bottom:1px solid #e5e5e5;text-align:left;vertical-align:top;}" +
+      ".mc-tabla th{font-size:.78rem;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-soft,#666);}" +
+      ".mc-tabla .num{text-align:right;white-space:nowrap;}" +
+      ".mc-todos{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;font-size:.72rem;font-weight:700;background:#fde7d9;color:#9a3412;border:1px solid #f4b793;}" +
+      ".mc-fuerte{color:#c2410c;font-weight:700;}";
+    document.head.appendChild(s);
+  }
+
+  // El recuadro va justo debajo del aviso de la semana (o arriba de todo si el aviso aún no existe).
+  function mcCaja() {
+    const seccion = document.getElementById("tab-alertas");
+    if (!seccion) return null;
+    let caja = document.getElementById("mcCaja");
+    if (!caja) {
+      caja = document.createElement("div");
+      caja.id = "mcCaja";
+      caja.className = "card mc-caja";
+      caja.addEventListener("click", mcClic);
+      const chip = seccion.querySelector("[data-st-chip]");
+      if (chip && chip.parentNode === seccion) seccion.insertBefore(caja, chip.nextSibling);
+      else seccion.insertBefore(caja, seccion.firstChild);
+      MC.huellaResumen = "";
+      MC.huellaDetalle = "";
+    }
+    if (!document.getElementById("mcResumen")) {
+      caja.innerHTML = '<div id="mcResumen"></div><div id="mcDetalle"></div>';
+      MC.huellaResumen = "";
+      MC.huellaDetalle = "";
+    }
+    return caja;
+  }
+
+  function mcHtmlResumen() {
+    const d = MC.datos;
+    const titulo = '<div class="mc-titulo">Los más caros de la semana' + (d ? " · " + esc(d.ciclo.etiqueta) : "") + "</div>";
+    if (!d) return titulo + '<p class="mc-sub">' + (MC.error ? esc(MC.error) : "Cargando…") + "</p>";
+    if (!d.resumen.productos_comparables) {
+      return titulo + '<p class="mc-sub">Todavía no hay productos cotizados por 2 o más proveedores en esta semana, así que no hay con qué comparar.</p>';
+    }
+    const p = d.proveedor_mas_caro;
+    if (!p) return titulo + '<p class="mc-sub">Todas las propuestas de esta semana tienen el mismo precio: no hay un proveedor más caro.</p>';
+    const um = d.resumen.umbral_pct;
+    const idx = d.proveedores.findIndex((x) => x.proveedor === p.proveedor);
+    const activa = MC.seleccion === p.proveedor ? " mc-activa" : "";
+    const principal =
+      '<button type="button" class="mc-principal' + activa + '" data-mc-i="' + idx + '" aria-expanded="' + (activa ? "true" : "false") + '">' +
+      '<div class="mc-etq">Proveedor más caro</div>' +
+      '<div class="mc-nombre">' + esc(p.proveedor) + "</div>" +
+      '<div class="mc-dato"><b class="mc-pct">+' + mcPorcentaje(p.promedio_pct) + "</b> en promedio sobre el mejor precio</div>" +
+      '<div class="mc-sub">En ' + p.productos_comparados + (p.productos_comparados === 1 ? " producto comparado" : " productos comparados") +
+      " · el más caro de todos en " + p.veces_mas_caro + " · " + p.productos_sobre_umbral + " con " + um + "% o más de diferencia</div>" +
+      (p.pocos_productos ? '<div class="mc-sub">Pocos productos comparados (menos de ' + d.resumen.minimo_productos_proveedor + "): tómalo como referencia.</div>" : "") +
+      '<div class="mc-ver">' + (activa ? "Ocultar sus productos más caros ▴" : "Ver sus productos más caros ▸") + "</div>" +
+      "</button>";
+    const filas = d.proveedores
+      .map((x, i) =>
+        '<button type="button" class="mc-fila' + (MC.seleccion === x.proveedor ? " mc-activa" : "") + '" data-mc-i="' + i + '">' +
+        "<span><b>" + esc(x.proveedor) + "</b></span>" +
+        '<span class="mc-num">+' + mcPorcentaje(x.promedio_pct) + " · " + x.productos_comparados + (x.productos_comparados === 1 ? " producto" : " productos") + " · " + x.productos_sobre_umbral + " con " + um + "% o más</span>" +
+        "</button>"
+      )
+      .join("");
+    return titulo + principal +
+      '<div class="mc-sub" style="margin-top:12px;">Todos los proveedores (haz clic en uno para ver sus productos):</div>' +
+      '<div class="mc-lista">' + filas + "</div>" +
+      '<p class="mc-sub" style="margin-top:10px;">Cada propuesta se compara con la más barata del mismo producto. Solo cuentan productos con 2 o más proveedores.</p>';
+  }
+
+  function mcHtmlDetalle() {
+    if (!MC.seleccion) return "";
+    const nombre = esc(MC.seleccion);
+    const cerrar = '<button type="button" class="btn-secondary" data-mc-cerrar="1">Cerrar</button>';
+    const d = MC.detalle;
+    if (!d) {
+      return '<div class="mc-detalle-caja"><div class="mc-titulo">Productos más caros de ' + nombre + "</div>" +
+        '<p class="mc-sub">' + (MC.detalleError ? esc(MC.detalleError) : "Cargando…") + "</p></div>";
+    }
+    const r = d.resumen;
+    const um = d.umbral_pct;
+    const cabecera = (sub, boton) =>
+      '<div class="mc-detalle-cab"><div><div class="mc-titulo">Productos más caros de ' + nombre + "</div>" +
+      '<div class="mc-sub">' + sub + "</div></div><div>" + (boton || "") + " " + cerrar + "</div></div>";
+    if (!r.por_encima_del_mejor) {
+      return '<div class="mc-detalle-caja">' + cabecera("Está al mejor precio, o empatado con el mejor, " + (r.productos_comparados === 1 ? "en el único producto que se compara." : "en los " + r.productos_comparados + " productos que se comparan."), "") + "</div>";
+    }
+    const mostrar = MC.verTodos ? d.productos : d.productos.filter((f) => f.sobre_umbral);
+    const boton = MC.verTodos
+      ? '<button type="button" class="btn-secondary" data-mc-todos="1">Ver solo los de ' + um + "% o más</button>"
+      : '<button type="button" class="btn-secondary" data-mc-todos="1">Ver todos los que están por encima</button>';
+    const sub = MC.verTodos
+      ? "Los " + r.por_encima_del_mejor + " productos en los que está por encima del mejor precio, de mayor a menor diferencia."
+      : "Mostrando " + mostrar.length + " de " + r.por_encima_del_mejor + " productos por encima del mejor precio (solo los de " + um + "% o más).";
+    if (!mostrar.length) {
+      return '<div class="mc-detalle-caja">' + cabecera(sub, boton) +
+        '<p class="mc-sub" style="margin-top:10px;">Ningún producto de ' + nombre + " supera el " + um + "% sobre el mejor precio. Usa «Ver todos los que están por encima».</p></div>";
+    }
+    const filas = mostrar
+      .map(
+        (f) =>
+          "<tr>" +
+          "<td><b>" + esc(f.producto || f.codigo) + '</b><div class="mc-sub">Cód. ' + esc(f.codigo) + (f.presentacion ? " · " + esc(f.presentacion) : "") + " · " + f.proveedores + " proveedores</div>" +
+          (f.mas_caro_de_todos ? '<span class="mc-todos">El más caro de todos</span>' : "") + "</td>" +
+          '<td class="num"><b>' + mcMoneda(f.precio) + "</b></td>" +
+          '<td class="num">' + mcMoneda(f.mejor_precio) + '<div class="mc-sub">' + esc(f.mejor_proveedor) + (f.tambien_mejor && f.tambien_mejor.length ? " (y " + f.tambien_mejor.length + " más)" : "") + "</div></td>" +
+          '<td class="num">' + mcMoneda(f.diferencia) + "</td>" +
+          '<td class="num ' + (f.sobre_umbral ? "mc-fuerte" : "") + '">+' + mcPorcentaje(f.diferencia_pct) + "</td>" +
+          "</tr>"
+      )
+      .join("");
+    return '<div class="mc-detalle-caja">' + cabecera(sub, boton) +
+      '<div style="overflow-x:auto;"><table class="mc-tabla"><thead><tr><th>Producto</th><th class="num">Su precio</th><th class="num">Mejor precio</th><th class="num">Diferencia</th><th class="num">Más caro en</th></tr></thead><tbody>' +
+      filas + "</tbody></table></div></div>";
+  }
+
+  function mcPintar() {
+    if (!mcCaja()) return;
+    const hr = mcHtmlResumen();
+    if (hr !== MC.huellaResumen) {
+      document.getElementById("mcResumen").innerHTML = hr;
+      MC.huellaResumen = hr;
+    }
+    const hd = mcHtmlDetalle();
+    if (hd !== MC.huellaDetalle) {
+      document.getElementById("mcDetalle").innerHTML = hd;
+      MC.huellaDetalle = hd;
+    }
+  }
+
+  async function mcSeleccionar(nombre) {
+    if (MC.seleccion === nombre) {
+      MC.seleccion = null;
+      MC.detalle = null;
+      mcPintar();
+      return;
+    }
+    MC.seleccion = nombre;
+    MC.detalle = null;
+    MC.detalleError = "";
+    MC.verTodos = false;
+    mcPintar();
+    try {
+      await mcCargarDetalle();
+    } catch (e) {
+      MC.detalleError = e.message || "No se pudieron cargar los productos de ese proveedor.";
+    }
+    mcPintar();
+    const det = document.getElementById("mcDetalle");
+    if (det && det.scrollIntoView) det.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function mcClic(e) {
+    const el = e.target && e.target.closest ? e.target.closest("[data-mc-i],[data-mc-todos],[data-mc-cerrar]") : null;
+    if (!el) return;
+    if (el.hasAttribute("data-mc-i")) {
+      const p = MC.datos && MC.datos.proveedores[Number(el.getAttribute("data-mc-i"))];
+      if (p) mcSeleccionar(p.proveedor);
+    } else if (el.hasAttribute("data-mc-todos")) {
+      MC.verTodos = !MC.verTodos;
+      mcPintar();
+    } else if (el.hasAttribute("data-mc-cerrar")) {
+      MC.seleccion = null;
+      MC.detalle = null;
+      mcPintar();
+    }
+  }
+
+  async function mcRefrescar() {
+    if (document.hidden) return;
+    try {
+      await mcCargar();
+    } catch (e) {
+      MC.error = e.message || "No se pudo calcular quién es el más caro.";
+      MC.datos = null;
+    }
+    if (MC.seleccion) {
+      try {
+        await mcCargarDetalle();
+      } catch (e) {
+        MC.detalleError = e.message || "No se pudieron cargar los productos de ese proveedor.";
+      }
+    }
+    if (mcVisible()) mcPintar();
+  }
+
+  let mcIniciado = false;
+  function mcIniciar() {
+    if (mcIniciado) return;
+    mcIniciado = true;
+    mcEstilos();
+    const boton = document.querySelector('nav.tabs button[data-tab="alertas"]');
+    if (boton) boton.addEventListener("click", () => { mcPintar(); setTimeout(mcRefrescar, 150); });
+    // Si cambia la semana de trabajo (el selector oculto avisa con "change"), se recalcula desde cero.
+    document.addEventListener("change", (e) => {
+      if (e.target && e.target.id === "cicloFiltroSelect") {
+        MC.datos = null;
+        MC.seleccion = null;
+        MC.detalle = null;
+        mcRefrescar();
+      }
+    });
+    // Si el código de Alertas vuelve a dibujar la pestaña y borra el recuadro, se vuelve a poner.
+    const seccion = document.getElementById("tab-alertas");
+    if (seccion && typeof MutationObserver === "function") {
+      new MutationObserver(() => { if (mcVisible() && !document.getElementById("mcCaja")) mcPintar(); }).observe(seccion, { childList: true });
+    }
+    setInterval(() => { if (mcVisible()) mcRefrescar(); }, Number(window.__MC_MS) || 60000);
+  }
+  setTimeout(mcIniciar, 0);
+  // ===== FIN LOS MÁS CAROS DE LA SEMANA =====
+
   // ---------- carga de archivos ----------
   async function uploadFiles(fileList) {
     const files = Array.from(fileList).filter((f) => /\.(xlsx|xls)$/i.test(f.name));
     if (files.length === 0) { toast("Selecciona archivos .xlsx válidos."); return; }
+    {
+      const st = stEstado();
+      if (st.trabajo && (stTerminada(st.trabajo) || stDistinta())) {
+        const aviso = "Estas cotizaciones se guardarán en la " + stEtiqueta(st.trabajo) +
+          (stTerminada(st.trabajo) ? ", que ya terminó" : "") + "." +
+          (stDistinta() ? "\n\nOjo: los proveedores están cargando en la " + stEtiqueta(st.recepcion) + "." : "") +
+          "\n\n¿Continuar?";
+        if (!confirm(aviso)) return;
+      }
+    }
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
+    { const stv = stEstado(); if (stv.trabajo) form.append("semana_trabajo", stv.trabajo.id); }
     const btn = document.getElementById("dropzone");
     btn.style.opacity = "0.6";
     try {
@@ -189,10 +1022,7 @@
       await loadCicloActual();
       await loadCiclosParaFiltro();
 
-      const filtro = document.getElementById("cicloFiltroSelect");
-      filtro.value = data.ciclo.id;
-
-      filtro.dispatchEvent(new Event("change"));
+      await stEstablecer(data.ciclo.id);
 
     } catch (err) {
       toast("No se pudo abrir: " + err.message);
@@ -214,12 +1044,8 @@
 
   async function loadCiclosParaFiltro() {
     try {
-      const ciclos = await (await api("/api/ciclos")).json();
-      const select = document.getElementById("cicloFiltroSelect");
-      const actual = select.value;
-      select.innerHTML = '<option value="">Todos los ciclos</option>' +
-        ciclos.map((c) => '<option value="' + c.id + '">' + c.id + " (" + c.estado + ")</option>").join("");
-      if (ciclos.some((c) => c.id === actual)) select.value = actual;
+      await stCargar();
+      stAplicarSelectores();
     } catch (err) {}
   }
 
@@ -264,7 +1090,7 @@
   async function goToPorProveedor(proveedor) {
     document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.remove("active"));
     document.querySelector('nav.tabs button[data-tab="por-proveedor"]').classList.add("active");
-    ["cargar", "comparativo", "alertas", "por-proveedor", "pedidos", "ordenes-compra", "hoja-negociacion", "configuracion"].forEach((t) => {
+    ["cargar", "comparativo", "alertas", "por-proveedor", "pedidos", "ordenes-compra", "hoja-negociacion", "promociones", "configuracion"].forEach((t) => {
       document.getElementById("tab-" + t).style.display = t === "por-proveedor" ? "block" : "none";
     });
     await loadProveedoresSelect();
@@ -358,7 +1184,7 @@
   function goToComparativo(codigo) {
     document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.remove("active"));
     document.querySelector('nav.tabs button[data-tab="comparativo"]').classList.add("active");
-    ["cargar", "comparativo", "alertas", "por-proveedor", "pedidos", "ordenes-compra", "hoja-negociacion", "configuracion"].forEach((t) => {
+    ["cargar", "comparativo", "alertas", "por-proveedor", "pedidos", "ordenes-compra", "hoja-negociacion", "promociones", "configuracion"].forEach((t) => {
       document.getElementById("tab-" + t).style.display = t === "comparativo" ? "block" : "none";
     });
     const box = document.getElementById("searchBox");
@@ -1332,64 +2158,11 @@
 
 
   async function cargarCiclosPedidos() {
-
-    const select =
-      document.getElementById("pedidoCicloSelect");
-
-    if (!select) return;
-
     try {
-
-      const ciclos =
-        await (await api("/api/ciclos")).json();
-
-      const actualAnterior =
-        select.value;
-
-      select.innerHTML =
-        ciclos.map(c =>
-          '<option value="' +
-          esc(c.id) +
-          '">' +
-          esc(c.id) +
-          " (" +
-          esc(c.estado || "") +
-          ")</option>"
-        ).join("");
-
-
-      let cicloActual = null;
-
-      try {
-        cicloActual =
-          await (
-            await api("/api/ciclos/actual")
-          ).json();
-      } catch (e) {}
-
-
-      if (
-        actualAnterior &&
-        ciclos.some(c => c.id === actualAnterior)
-      ) {
-        select.value =
-          actualAnterior;
-
-      } else if (
-        cicloActual &&
-        cicloActual.id &&
-        ciclos.some(c => c.id === cicloActual.id)
-      ) {
-        select.value =
-          cicloActual.id;
-      }
-
+      await stCargar();
+      stAplicarSelectores();
     } catch (err) {
-
-      toast(
-        "No se pudieron cargar los ciclos: " +
-        err.message
-      );
+      toast("No se pudieron cargar los ciclos: " + err.message);
     }
   }
 
@@ -2485,7 +3258,7 @@
     btn.addEventListener("click", async () => {
       document.querySelectorAll("nav.tabs button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      ["cargar", "comparativo", "alertas", "por-proveedor", "pedidos", "ordenes-compra", "hoja-negociacion", "configuracion"].forEach((t) => {
+      ["cargar", "comparativo", "alertas", "por-proveedor", "pedidos", "ordenes-compra", "hoja-negociacion", "promociones", "configuracion"].forEach((t) => {
         document.getElementById("tab-" + t).style.display = t === btn.dataset.tab ? "block" : "none";
       });
       if (btn.dataset.tab === "alertas") await renderAlertas();
@@ -2494,6 +3267,7 @@
       if (btn.dataset.tab === "configuracion") { await cargarLogoCorporativo(); await loadProveedoresTabla(); await loadCatalogoTabla(); await loadCiclosTabla(); }
       if (btn.dataset.tab === "ordenes-compra") await renderOrdenesCompra();
       if (btn.dataset.tab === "hoja-negociacion") await renderHojaNegociacion();
+      if (btn.dataset.tab === "promociones") await renderPromociones();
     });
   });
 
@@ -2875,10 +3649,7 @@
 
 
     // Esperar a que se carguen los ciclos
-    if (
-      ultima.ciclo &&
-      cicloFiltroRecordar
-    ) {
+    if (false /* la semana ya no se restaura del navegador: manda la semana de trabajo del sistema */ && ultima.ciclo && cicloFiltroRecordar) {
 
       for (
         let intento = 0;
@@ -4757,6 +5528,7 @@
   }
 
   async function hnCargarCiclos() {
+    try { await stCargar(); } catch (e) {}
     let ciclos = [];
     try { ciclos = await (await api("/api/ciclos")).json(); } catch (e) {}
     let activo = null;
@@ -4766,7 +5538,8 @@
     } catch (e) {}
     const ids = ciclos.map((c) => c.id).sort().reverse();
     HN.ciclos = ids;
-    HN.ciclo = activo && ids.includes(activo) ? activo : ids[0] || null;
+    const trabajoId = (stEstado().trabajo && stEstado().trabajo.id) || null;
+    HN.ciclo = trabajoId && ids.includes(trabajoId) ? trabajoId : (activo && ids.includes(activo) ? activo : ids[0] || null);
   }
 
   async function renderHojaNegociacion() {
@@ -4779,7 +5552,9 @@
       raiz.addEventListener("change", hnCambio);
     }
     try {
-      if (!HN.ciclo) await hnCargarCiclos();
+      const cicloAntes = HN.ciclo;
+      await hnCargarCiclos();
+      if (cicloAntes && cicloAntes !== HN.ciclo) { HN.negId = null; HN.hoja = null; HN.archivo = null; HN.editando = false; }
       if (HN.negId) await hnAbrirHoja(HN.negId); else await hnTablero();
     } catch (err) {
       toast("No se pudo cargar la negociación: " + err.message);
@@ -4810,7 +5585,7 @@
     }).join("");
     hnRaiz().innerHTML =
       '<div class="hn-card"><div class="hn-top"><div><h2 class="hn-h">Negociación</h2><p class="hn-sub">Todas las rondas de cada proveedor en una sola hoja: lo que cotizó, tu contrapropuesta, su respuesta y el precio final.</p></div>' +
-      '<label class="hn-sub">Ciclo <select id="hnCiclo">' + opciones + "</select></label></div></div>" +
+      "</div></div>" +
       (filas ? '<div class="hn-wrap"><table class="hn-t" style="min-width:720px"><thead><tr><th>Proveedor</th><th>Cotizaciones</th><th>Estado</th><th>Ronda</th><th>Cerrados</th><th></th></tr></thead><tbody>' + filas + "</tbody></table></div>"
         : '<div class="hn-card"><p class="hn-sub">No hay cotizaciones ni negociaciones en este ciclo.</p></div>');
   }
