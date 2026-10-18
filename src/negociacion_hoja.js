@@ -268,7 +268,8 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
           const acepta = f.tipo === "acepta";
           const obs = f.tipo === "revisar" ? "Revisar: " + f.motivo : TEXTO_TIPO[f.tipo];
           insertarHistorial(neg.id, f.plu, rondaNueva, "PROVEEDOR", f.respuesta, acepta ? "acepta_contrapropuesta" : "respuesta_proveedor", obs);
-          actualizarProducto(neg.id, f.plu, acepta ? { propuesta_final_proveedor: f.respuesta, precio_final: f.respuesta, estado: "acuerdo" } : { propuesta_final_proveedor: f.respuesta });
+          actualizarProducto(neg.id, f.plu, { propuesta_final_proveedor: f.respuesta, precio_final: f.respuesta, estado: "acuerdo" }); /*precio-final-desde-archivo*/
+          if (!acepta) insertarHistorial(neg.id, f.plu, rondaNueva, "MERCALDAS", f.respuesta, "acuerdo_manual", "Precio final tomado del archivo Excel");
           guardadas++;
         }
         sincronizarCabecera(neg.id);
