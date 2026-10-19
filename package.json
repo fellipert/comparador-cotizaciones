@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.js"
   },
   "dependencies": {
+    "pdfkit": "^0.20.2",
     "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.7",
     "exceljs": "^4.4.0",

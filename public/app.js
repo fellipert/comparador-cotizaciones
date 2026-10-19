@@ -3392,7 +3392,7 @@
       });
       if (btn.dataset.tab === "alertas") await renderAlertas();
       if (btn.dataset.tab === "por-proveedor") await loadProveedoresSelect();
-      if (btn.dataset.tab === "pedidos") await renderPedidos();
+      if (btn.dataset.tab === "pedidos") await renderPedidos(); try { if (window.ocCargarResumen) await window.ocCargarResumen(); } catch (e) { console.error(e); }
       if (btn.dataset.tab === "configuracion") { await cargarLogoCorporativo(); await loadProveedoresTabla(); await loadCatalogoTabla(); await loadCiclosTabla(); }
       if (btn.dataset.tab === "ordenes-compra") await renderOrdenesCompra();
       if (btn.dataset.tab === "hoja-negociacion") await renderHojaNegociacion();
@@ -4786,6 +4786,221 @@
     ov.addEventListener("click", function (e) { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
   }
+
+  // ===== Órdenes de compra por proveedor (paso 4): cuadro de proveedores, vista previa, PDF y numeración =====
+  /*oc-cuadro-proveedores*/
+  function ocEsc(v) {
+    return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function ocSeleccion() {
+    return {
+      ciclo: (document.getElementById("pedidoCicloSelect") || {}).value || "",
+      periodo: (document.getElementById("pedidoPeriodoSelect") || {}).value || "LUNES-MARTES"
+    };
+  }
+
+  function ocModal(titulo, color, cuerpo, botones) {
+    const previo = document.getElementById("ocModalOverlay");
+    if (previo) previo.remove();
+    const ov = document.createElement("div");
+    ov.id = "ocModalOverlay";
+    ov.setAttribute("style", "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;");
+    const box = document.createElement("div");
+    box.setAttribute("style", "background:#fff;color:#222;border-radius:10px;max-width:560px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.35);");
+    const h = document.createElement("div");
+    h.setAttribute("style", "background:" + color + ";color:#fff;padding:14px 18px;border-radius:10px 10px 0 0;font-weight:700;font-size:16px;");
+    h.textContent = titulo;
+    const c = document.createElement("div");
+    c.setAttribute("style", "padding:14px 18px;overflow:auto;font-size:14px;line-height:1.5;");
+    if (typeof cuerpo === "string") c.textContent = cuerpo; else c.appendChild(cuerpo);
+    const pie = document.createElement("div");
+    pie.setAttribute("style", "padding:10px 18px 14px;text-align:right;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end;");
+    botones.forEach(function (b) {
+      const bt = document.createElement("button");
+      bt.type = "button";
+      bt.textContent = b.texto;
+      bt.setAttribute("style", "border:0;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer;" + (b.primario ? "background:" + color + ";color:#fff;" : "background:#e8e8e8;color:#222;"));
+      bt.onclick = function () { if (b.accion) { const r = b.accion(); if (r === false) return; } ov.remove(); };
+      pie.appendChild(bt);
+    });
+    box.appendChild(h); box.appendChild(c); box.appendChild(pie);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  const OC = { proveedor: "", proveedores: [] };
+
+  async function ocCargarResumen() {
+    const box = document.getElementById("ocProveedoresBox");
+    if (!box) return;
+    const { ciclo, periodo } = ocSeleccion();
+    if (!ciclo) { box.innerHTML = '<p style="color:var(--ink-soft);font-size:0.85rem;">Selecciona el ciclo para ver los proveedores.</p>'; return; }
+    try {
+      const res = await api("/api/ordenes-compra/resumen?ciclo_id=" + encodeURIComponent(ciclo) + "&periodo=" + encodeURIComponent(periodo));
+      OC.proveedores = await res.json();
+    } catch (err) {
+      box.innerHTML = '<p style="color:#b3261e;font-size:0.85rem;">No se pudo cargar el cuadro de proveedores: ' + ocEsc(err.message) + "</p>";
+      return;
+    }
+    ocPintarResumen();
+  }
+
+  function ocPintarResumen() {
+    const box = document.getElementById("ocProveedoresBox");
+    if (!box) return;
+    const filas = OC.proveedores;
+    if (!filas.length) {
+      box.innerHTML = '<p style="color:var(--ink-soft);font-size:0.85rem;">Todavía no hay pedido asignado a proveedores en este ciclo. Aplica la distribución primero.</p>';
+      return;
+    }
+    const badge = function (p) {
+      if (p.estado === "emitida") return '<span style="background:#1F4E79;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">OC emitida</span>';
+      if (p.estado === "faltan_precios") return '<span style="background:#e67e22;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">Faltan ' + p.sin_precio + " precio(s)</span>";
+      return '<span style="background:#1C8B3C;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">Listo para OC</span>';
+    };
+    box.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<strong style="font-size:0.9rem;">Proveedores del pedido (' + filas.length + ") · clic en uno para ver su pedido preliminar</strong>" +
+      '<button class="btn-secondary" id="ocBtnActualizar" type="button">↻ Actualizar</button></div>' +
+      '<div class="table-scroll" style="max-height:320px;overflow:auto;"><table><thead><tr>' +
+      "<th>#</th><th>Proveedor</th><th>Productos</th><th>Total estimado</th><th>Estado</th><th>Orden(es)</th></tr></thead><tbody>" +
+      filas.map(function (p, i) {
+        const sel = p.proveedor === OC.proveedor;
+        return '<tr class="oc-fila" data-prov="' + ocEsc(p.proveedor) + '" style="cursor:pointer;' + (sel ? "background:#e8f0fa;" : "") + '">' +
+          "<td>" + (i + 1) + "</td><td><strong>" + ocEsc(p.proveedor) + "</strong></td><td>" + p.productos + "</td>" +
+          "<td>" + (p.estado === "emitida" ? "—" : fmtMoney(p.total_estimado)) + "</td><td>" + badge(p) + "</td>" +
+          "<td>" + (p.ordenes.length ? p.ordenes.map(function (o) { return ocEsc(o.numero); }).join(", ") : "—") + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+
+  async function ocVerPrevia(proveedor) {
+    OC.proveedor = proveedor;
+    const sel = document.getElementById("pedidoProveedorSelect");
+    if (sel && [...sel.options].some(function (o) { return o.value === proveedor; })) sel.value = proveedor;
+    ocPintarResumen();
+    const cont = document.getElementById("ocPreviaBox");
+    if (!cont) return;
+    const { ciclo, periodo } = ocSeleccion();
+    let d;
+    try {
+      const res = await api("/api/ordenes-compra/preliminar?ciclo_id=" + encodeURIComponent(ciclo) + "&periodo=" + encodeURIComponent(periodo) + "&proveedor=" + encodeURIComponent(proveedor));
+      d = await res.json();
+    } catch (err) { toast("No se pudo cargar el pedido: " + err.message); return; }
+
+    let html = '<div style="border:1px solid #cfd8e3;border-radius:8px;padding:12px;margin-top:12px;">' +
+      '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center;">' +
+      "<strong>Pedido preliminar · " + ocEsc(d.proveedor) + "</strong>" +
+      "<span>" + d.items.length + " productos · Total: <strong>" + fmtMoney(d.total) + "</strong></span></div>";
+    if (d.items.length) {
+      html += '<div class="table-scroll" style="margin-top:8px;max-height:340px;overflow:auto;"><table><thead><tr>' +
+        "<th>PLU</th><th>Producto</th><th>Presentación</th><th>Pedido</th><th>Precio final negociado</th><th>Total</th></tr></thead><tbody>" +
+        d.items.map(function (it) {
+          return "<tr><td>" + ocEsc(it.codigo) + "</td><td>" + ocEsc(it.producto) + "</td><td>" + ocEsc(it.presentacion) + "</td><td>" + it.pedido + "</td>" +
+            (it.falta_precio
+              ? '<td style="color:#b3261e;font-weight:600;">Sin precio negociado</td><td>—</td>'
+              : "<td>" + fmtMoney(it.precio) + "</td><td>" + fmtMoney(it.total) + "</td>") + "</tr>";
+        }).join("") + "</tbody></table></div>";
+      if (d.sin_precio) html += '<p style="color:#b3261e;font-size:0.85rem;margin:8px 0 0;">Faltan ' + d.sin_precio + " producto(s) sin precio final negociado. Cierra su negociación para poder generar la orden.</p>";
+      html += '<div style="margin-top:10px;"><button class="btn-primary" id="ocBtnGenerarPanel" type="button"' + (d.listo ? "" : " disabled") + ">🧾 Generar orden de compra</button></div>";
+    } else {
+      html += '<p style="color:var(--ink-soft);font-size:0.85rem;margin:8px 0 0;">No hay productos pendientes de orden de compra para este proveedor.</p>';
+    }
+    if (d.ordenes.length) {
+      html += '<div style="margin-top:10px;font-size:0.85rem;"><strong>Órdenes ya emitidas:</strong> ' +
+        d.ordenes.map(function (o) { return '<a href="/api/ordenes-compra/' + o.id + '/pdf">' + ocEsc(o.numero) + " ⬇ PDF</a>"; }).join(" · ") + "</div>";
+    }
+    cont.innerHTML = html + "</div>";
+  }
+
+  async function ocGenerar(proveedor) {
+    if (!proveedor) { toast("Selecciona un proveedor del cuadro."); return; }
+    const { ciclo, periodo } = ocSeleccion();
+    if (!ciclo) { toast("Selecciona el ciclo."); return; }
+    let prev, cfg;
+    try {
+      prev = await (await api("/api/ordenes-compra/preliminar?ciclo_id=" + encodeURIComponent(ciclo) + "&periodo=" + encodeURIComponent(periodo) + "&proveedor=" + encodeURIComponent(proveedor))).json();
+      cfg = await (await api("/api/ordenes-compra/config")).json();
+    } catch (err) { toast(err.message); return; }
+    if (!prev.items.length) { ocModal("Sin pedido pendiente", "#1F4E79", "Este proveedor no tiene productos pendientes de orden de compra.", [{ texto: "Entendido", primario: true }]); return; }
+    if (!prev.listo) {
+      const faltan = prev.items.filter(function (i) { return i.falta_precio; }).map(function (i) { return i.codigo + " " + i.producto; });
+      ocModal("No se puede generar la orden", "#b3261e", "Faltan precios finales negociados de " + prev.proveedor + ":\n" + faltan.join("\n"), [{ texto: "Entendido", primario: true }]);
+      return;
+    }
+    const texto = "Se generará la orden " + cfg.prefijo + cfg.siguiente + " para " + prev.proveedor + " (" + prev.items.length + " productos, total " + fmtMoney(prev.total) + "). El número queda consumido. ¿Continuar?";
+    const cuerpo = document.createElement("div"); cuerpo.textContent = texto;
+    ocModal("Generar orden de compra", "#1C8B3C", cuerpo, [
+      { texto: "Cancelar" },
+      { texto: "Generar y descargar PDF", primario: true, accion: function () { ocConfirmarGenerar(proveedor, ciclo, periodo); } }
+    ]);
+  }
+
+  async function ocConfirmarGenerar(proveedor, ciclo, periodo) {
+    try {
+      const res = await api("/api/ordenes-compra/generar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ciclo_id: ciclo, periodo: periodo, proveedor: proveedor }) });
+      const data = await res.json();
+      toast("Orden " + data.orden.numero + " generada.");
+      window.location.href = "/api/ordenes-compra/" + data.orden.id + "/pdf";
+      await ocCargarResumen();
+      await ocVerPrevia(proveedor);
+    } catch (err) {
+      ocModal("No se pudo generar la orden", "#b3261e", err.message, [{ texto: "Entendido", primario: true }]);
+    }
+  }
+
+  async function ocConfigNumeracion() {
+    let cfg;
+    try { cfg = await (await api("/api/ordenes-compra/config")).json(); } catch (err) { toast(err.message); return; }
+    const cuerpo = document.createElement("div");
+    const info = document.createElement("p");
+    info.setAttribute("style", "margin:0 0 10px;");
+    info.textContent = "La próxima orden saldrá como " + cfg.prefijo + cfg.siguiente + (cfg.ultimo_emitido ? " (última emitida: " + cfg.prefijo + cfg.ultimo_emitido + ")." : ".");
+    const lbl = document.createElement("label");
+    lbl.textContent = "Número inicial (de " + cfg.minimo + " a " + cfg.maximo + "): ";
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = cfg.minimo; inp.max = cfg.maximo; inp.value = cfg.siguiente; inp.className = "manual-input"; inp.setAttribute("style", "width:120px;");
+    const msg = document.createElement("p");
+    msg.setAttribute("style", "color:#b3261e;margin:8px 0 0;min-height:1.2em;");
+    cuerpo.appendChild(info); lbl.appendChild(inp); cuerpo.appendChild(lbl); cuerpo.appendChild(msg);
+    ocModal("Numeración de órdenes de compra", "#1F4E79", cuerpo, [
+      { texto: "Cancelar" },
+      { texto: "Guardar", primario: true, accion: function () {
+        const n = Number(inp.value);
+        if (!Number.isInteger(n) || n < cfg.minimo || n > cfg.maximo) { msg.textContent = "Escribe un entero entre " + cfg.minimo + " y " + cfg.maximo + "."; return false; }
+        api("/api/ordenes-compra/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inicio: n }) })
+          .then(function (r) { return r.json(); })
+          .then(function (c) { toast("Próxima orden: " + c.prefijo + c.siguiente); })
+          .catch(function (err) { ocModal("No se pudo guardar", "#b3261e", err.message, [{ texto: "Entendido", primario: true }]); });
+      } }
+    ]);
+  }
+
+  (function ocConectar() {
+    const caja = document.getElementById("ocProveedoresBox");
+    if (caja) {
+      caja.addEventListener("click", function (e) {
+        if (e.target.closest("#ocBtnActualizar")) { ocCargarResumen(); return; }
+        const fila = e.target.closest(".oc-fila");
+        if (fila) ocVerPrevia(fila.getAttribute("data-prov"));
+      });
+    }
+    const prev = document.getElementById("ocPreviaBox");
+    if (prev) prev.addEventListener("click", function (e) { if (e.target.closest("#ocBtnGenerarPanel")) ocGenerar(OC.proveedor); });
+    const bg = document.getElementById("btnGenerarOC");
+    if (bg) bg.addEventListener("click", function () {
+      const sel = document.getElementById("pedidoProveedorSelect");
+      ocGenerar((sel && sel.value) || OC.proveedor);
+    });
+    const bc = document.getElementById("btnConfigNumeracionOC");
+    if (bc) bc.addEventListener("click", ocConfigNumeracion);
+    ["pedidoCicloSelect", "pedidoPeriodoSelect"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", function () { OC.proveedor = ""; const p = document.getElementById("ocPreviaBox"); if (p) p.innerHTML = ""; ocCargarResumen(); });
+    });
+  })();
+  window.ocCargarResumen = ocCargarResumen;
 
   async function aplicarPedidoPct() {
 
