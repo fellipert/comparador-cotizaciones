@@ -7627,6 +7627,41 @@ app.get("/api/export", (req, res) => {
   const pct = getContrapropuestaPct();
   const comparativo = computeComparativo(quotes, pct);
   const dashboard = computeDashboard(quotes, comparativo);
+/*export-negociacion-final*/
+  const _nk = (v) => String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+  const _llave = (prov, cod) => _nk(prov) + "|" + String(cod == null ? "" : cod).trim();
+  const _finales = new Map();
+  try {
+    let _ciclo = String(req.query.ciclo || "").trim();
+    if (!_ciclo && typeof obtenerSemanaTrabajo === "function") { const _w = obtenerSemanaTrabajo(); _ciclo = _w && _w.id ? String(_w.id) : ""; }
+    if (_ciclo) {
+      db.prepare(`
+        SELECT n.proveedor AS proveedor, p.codigo AS codigo, p.producto AS producto, p.presentacion AS presentacion,
+               p.propuesta_inicial AS inicial, p.contrapropuesta_mercaldas AS contra, p.precio_final AS final, p.estado AS estado
+        FROM negociacion_unificada_productos p
+        JOIN negociaciones_unificadas n ON n.id = p.negociacion_id
+        WHERE n.ciclo_id = ? AND p.precio_final IS NOT NULL
+        ORDER BY n.proveedor, p.producto
+      `).all(_ciclo).forEach((r) => _finales.set(_llave(r.proveedor, r.codigo), r));
+    }
+  } catch (e) { console.error("[export] precios finales:", e.message); }
+  const _cotizado = new Map(quotes.map((q) => [_llave(q.proveedor, q.codigo), q.precio]));
+  const _filasNeg = [..._finales.values()].map((r) => {
+    const cot = _cotizado.has(_llave(r.proveedor, r.codigo)) ? _cotizado.get(_llave(r.proveedor, r.codigo)) : r.inicial;
+    const ahorro = cot != null ? cot - r.final : null;
+    return {
+      Proveedor: r.proveedor,
+      "Código": r.codigo,
+      Producto: r.producto,
+      "Presentación": r.presentacion,
+      "Precio Cotizado": cot,
+      "Contrapropuesta Mercaldas": r.contra,
+      "Precio Final Negociado": r.final,
+      "Ahorro por unidad": ahorro,
+      "% Ahorro": cot ? Math.round((ahorro / cot) * 1000) / 10 : null,
+      Estado: r.estado,
+    };
+  });
 
   const wsCot = XLSX.utils.json_to_sheet(
     quotes.map((q) => ({
@@ -7637,6 +7672,7 @@ app.get("/api/export", (req, res) => {
       "Presentación": q.presentacion,
       Disponibilidad: q.disponibilidad,
       "Precio Cotizado": q.precio,
+      "Precio Final Negociado": (_finales.get(_llave(q.proveedor, q.codigo)) || {}).final ?? "",
       "Vigencia": q.vigencia_fin,
       "Observación": q.observacion,
     }))
@@ -7675,6 +7711,8 @@ app.get("/api/export", (req, res) => {
   XLSX.utils.book_append_sheet(wb, wsCot, "Cotizaciones");
   XLSX.utils.book_append_sheet(wb, wsComp, "Comparativo");
   XLSX.utils.book_append_sheet(wb, wsDash, "Dashboard");
+  const wsNeg = XLSX.utils.json_to_sheet(_filasNeg.length ? _filasNeg : [{ Aviso: "Aún no hay precios finales negociados para esta semana." }]);
+  XLSX.utils.book_append_sheet(wb, wsNeg, "Negociación Final");
   const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
   res.setHeader("Content-Disposition", 'attachment; filename="Comparativo_Cotizaciones.xlsx"');
