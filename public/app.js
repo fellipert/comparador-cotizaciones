@@ -5002,6 +5002,172 @@
   })();
   window.ocCargarResumen = ocCargarResumen;
 
+  // ===== Indicadores de compra: compra por proveedor y evolución de precios =====
+  /*indicadores-compra-ui*/
+  (function indicadoresCompra() {
+    const raiz = document.getElementById("indRaiz");
+    const boton = document.querySelector('button[data-tab="indicadores-compra"]');
+    const seccion = document.getElementById("tab-indicadores-compra");
+    if (!raiz || !boton || !seccion) return;
+    const E = { cargado: false, ciclos: [], periodos: {}, datos: null, filtro: "", tipo: "todos" };
+    const esc = function (v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); };
+    const money = function (n) { return n == null ? "—" : "$" + Math.round(n).toLocaleString("es-CO"); };
+    const pct = function (n, signo) { if (n == null) return "—"; return (signo && n > 0 ? "+" : "") + n.toFixed(1).replace(".", ",") + "%"; };
+    const COL_ALZA = "#b3261e", COL_BAJA = "#1C8B3C", AZUL = "#1F4E79";
+
+    function sel() { return { ciclo: (document.getElementById("indCiclo") || {}).value || "", periodo: (document.getElementById("indPeriodo") || {}).value || "" }; }
+
+    function esqueleto() {
+      raiz.innerHTML =
+        '<div class="card"><p class="section-title">Indicadores de gestión de compra</p>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:8px;">' +
+        '<label style="font-size:0.85rem;">Semana (ciclo)<br><select id="indCiclo" class="manual-input"></select></label>' +
+        '<label style="font-size:0.85rem;">Periodo del pedido<br><select id="indPeriodo" class="manual-input"></select></label>' +
+        '<button class="btn-secondary" id="indActualizar" type="button">↻ Actualizar</button>' +
+        '<button class="btn-primary" id="indExcel" type="button">⬇ Descargar Excel</button></div>' +
+        '<div id="indTiles"></div></div>' +
+        '<div class="card" id="indCompra"></div><div class="card" id="indPrecios"></div>';
+      document.getElementById("indActualizar").addEventListener("click", cargar);
+      document.getElementById("indCiclo").addEventListener("change", function () { llenarPeriodos(); cargar(); });
+      document.getElementById("indPeriodo").addEventListener("change", cargar);
+      document.getElementById("indExcel").addEventListener("click", function () {
+        const s = sel();
+        if (!s.ciclo) { toast("Selecciona el ciclo."); return; }
+        window.location.href = "/api/indicadores-compra/excel?ciclo_id=" + encodeURIComponent(s.ciclo) + "&periodo=" + encodeURIComponent(s.periodo);
+      });
+    }
+
+    function llenarPeriodos() {
+      const c = document.getElementById("indCiclo").value;
+      const ps = E.periodos[c] || [];
+      document.getElementById("indPeriodo").innerHTML = '<option value="">Todos los periodos</option>' + ps.map(function (p) { return '<option value="' + esc(p) + '">' + esc(p) + "</option>"; }).join("");
+    }
+
+    async function iniciar() {
+      esqueleto();
+      try {
+        const r = await api("/api/indicadores-compra/ciclos");
+        const d = await r.json();
+        E.ciclos = d.ciclos; E.periodos = d.periodos;
+        document.getElementById("indCiclo").innerHTML = d.ciclos.slice().reverse().map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; }).join("");
+        if (d.sugerido) document.getElementById("indCiclo").value = d.sugerido;
+        llenarPeriodos();
+        E.cargado = true;
+      } catch (err) { raiz.innerHTML = '<div class="card" style="color:#b3261e;">No se pudo cargar: ' + esc(err.message) + "</div>"; return; }
+      await cargar();
+    }
+
+    async function cargar() {
+      const s = sel();
+      if (!s.ciclo) { document.getElementById("indTiles").innerHTML = '<p style="color:var(--ink-soft);">No hay ciclos cargados todavía.</p>'; return; }
+      try {
+        const r = await api("/api/indicadores-compra?ciclo_id=" + encodeURIComponent(s.ciclo) + "&periodo=" + encodeURIComponent(s.periodo));
+        E.datos = await r.json();
+      } catch (err) { toast("No se pudieron calcular los indicadores: " + err.message); return; }
+      pintar();
+    }
+
+    function tile(titulo, valor, nota, color) {
+      return '<div style="border:1px solid #d9e1ea;border-radius:8px;padding:10px 12px;min-width:150px;flex:1;">' +
+        '<div style="font-size:0.75rem;color:#555;">' + titulo + '</div><div style="font-size:1.35rem;font-weight:700;color:' + (color || "#222") + ';">' + valor + "</div>" +
+        '<div style="font-size:0.75rem;color:#555;min-height:1em;">' + (nota || "") + "</div></div>";
+    }
+    function flecha(v) { return v == null ? "" : v > 0.005 ? "▲ " : v < -0.005 ? "▼ " : "= "; }
+    function colorVar(v) { return v == null || Math.abs(v) <= 0.005 ? "#555" : v > 0 ? COL_ALZA : COL_BAJA; }
+
+    function pintar() {
+      const d = E.datos, c = d.compra, p = d.precios;
+      document.getElementById("indTiles").innerHTML =
+        '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;">' +
+        tile("Compra total " + esc(d.ciclo), c.hay_pedido ? money(c.total) : "—", c.hay_pedido && c.var_total_pct != null ? '<span style="color:' + colorVar(c.var_total_pct) + ';">' + flecha(c.var_total_pct) + pct(c.var_total_pct, true) + "</span> vs " + esc(c.ciclo_previo) : "") +
+        tile("Proveedores con pedido", c.hay_pedido ? c.n_proveedores : "—", c.hay_pedido ? "Top 3 concentran " + pct(c.top3_pct) : "") +
+        tile("Líneas con precio final", c.hay_pedido ? c.pct_precio_final + "%" : "—", c.hay_pedido ? "El resto usa el precio de la distribución" : "") +
+        tile("Precios al alza", p.resumen.alzas, "de " + p.cobertura.comparables + " comparables", p.resumen.alzas ? COL_ALZA : "") +
+        tile("Precios a la baja", p.resumen.bajas, "vs " + esc(p.ciclo_previo || "—"), p.resumen.bajas ? COL_BAJA : "") +
+        "</div>";
+      pintarCompra(); pintarPrecios();
+    }
+
+    function pintarCompra() {
+      const c = E.datos.compra, cont = document.getElementById("indCompra");
+      let h = '<p class="section-title">1. Compra por proveedor</p>';
+      if (!c.hay_pedido) {
+        cont.innerHTML = h + '<p style="color:var(--ink-soft);font-size:0.85rem;">Todavía no hay pedido distribuido para ' + esc(E.datos.ciclo) + ". Carga la demanda y la distribución en Pedidos y pulsa Aplicar para ver este cuadro.</p>";
+        return;
+      }
+      const maxv = Math.max.apply(null, c.proveedores.map(function (x) { return x.valor; })) || 1;
+      h += '<p style="font-size:0.8rem;color:#555;margin:4px 0 8px;">Valor = cantidad asignada × precio final negociado. Comparado con ' + esc(c.ciclo_previo || "—") + (c.ciclo_previo ? "" : " (no hay semana anterior con pedido)") + ". Concentración (HHI): " + c.hhi + ".</p>";
+      h += '<div class="table-scroll" style="max-height:460px;overflow:auto;"><table><thead><tr><th>#</th><th>Proveedor</th><th>Productos</th><th style="min-width:220px;">Valor comprado</th><th>% part.</th><th>Semana anterior</th><th>Var.</th><th>Precio final</th></tr></thead><tbody>';
+      c.proveedores.forEach(function (x, i) {
+        h += "<tr><td>" + (i + 1) + "</td><td><strong>" + esc(x.proveedor) + "</strong></td><td>" + x.productos + "</td>" +
+          '<td><div style="display:flex;align-items:center;gap:8px;"><div style="background:#e8eef5;border-radius:3px;flex:1;height:10px;"><div style="background:' + AZUL + ";width:" + Math.max(2, Math.round((x.valor / maxv) * 100)) + '%;height:10px;border-radius:3px;"></div></div><span style="min-width:84px;text-align:right;">' + money(x.valor) + "</span></div></td>" +
+          "<td>" + pct(x.pct) + "</td><td>" + money(x.valor_previo) + '</td><td style="color:' + colorVar(x.pct_var) + ';">' + flecha(x.pct_var) + pct(x.pct_var, true) + "</td>" +
+          '<td style="color:' + (x.pct_final < 100 ? "#e67e22" : "#1C8B3C") + ';">' + x.pct_final + "%</td></tr>";
+      });
+      cont.innerHTML = h + "</tbody></table></div>";
+    }
+
+    function spark(serie) {
+      const pts = serie.map(function (v, i) { return v == null ? null : { i: i, v: v }; }).filter(Boolean);
+      if (pts.length < 2) return '<span style="color:#999;">—</span>';
+      const w = 92, hgt = 24, mn = Math.min.apply(null, pts.map(function (q) { return q.v; })), mx = Math.max.apply(null, pts.map(function (q) { return q.v; }));
+      const x = function (i) { return 3 + (i / Math.max(1, serie.length - 1)) * (w - 6); };
+      const y = function (v) { return mx === mn ? hgt / 2 : 3 + (1 - (v - mn) / (mx - mn)) * (hgt - 6); };
+      const ult = pts[pts.length - 1];
+      return '<svg width="' + w + '" height="' + hgt + '" viewBox="0 0 ' + w + " " + hgt + '" role="img" aria-label="Tendencia"><polyline fill="none" stroke="' + AZUL + '" stroke-width="1.6" points="' +
+        pts.map(function (q) { return x(q.i).toFixed(1) + "," + y(q.v).toFixed(1); }).join(" ") + '"/><circle cx="' + x(ult.i).toFixed(1) + '" cy="' + y(ult.v).toFixed(1) + '" r="2.5" fill="' + AZUL + '"/></svg>';
+    }
+
+    function pintarPrecios() {
+      const p = E.datos.precios, cont = document.getElementById("indPrecios");
+      let h = '<p class="section-title">2. Evolución de precios (precio final negociado, promedio entre proveedores)</p>';
+      if (!p.cobertura.con_precio) {
+        cont.innerHTML = h + '<p style="color:var(--ink-soft);font-size:0.85rem;">' + esc(E.datos.ciclo) + " no tiene precios finales negociados todavía.</p>";
+        return;
+      }
+      h += '<p style="font-size:0.8rem;color:#555;margin:4px 0 8px;">' + p.cobertura.con_precio + " productos con precio final; " + p.cobertura.comparables + " comparables con " + esc(p.ciclo_previo || "—") + (p.ciclo_previo ? "" : " (no hay semana anterior con precios)") + ". La tendencia muestra las últimas " + p.ventana.length + " semanas (" + esc(p.ventana[0]) + " → " + esc(p.ventana[p.ventana.length - 1]) + ").</p>" +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"><input id="indBuscar" class="manual-input" type="search" placeholder="Buscar PLU o producto" value="' + esc(E.filtro) + '" style="min-width:220px;">' +
+        '<select id="indTipo" class="manual-input"><option value="todos">Todos</option><option value="alza">Solo alzas</option><option value="baja">Solo bajas</option><option value="igual">Sin cambio</option></select></div>' +
+        '<div class="table-scroll" style="max-height:520px;overflow:auto;"><table><thead><tr><th>PLU</th><th>Producto</th><th>Presentación</th><th>' + esc(p.ciclo_previo || "Anterior") + "</th><th>" + esc(E.datos.ciclo) + '</th><th>Dif. $</th><th>Var. %</th><th>Mínimo</th><th>Tendencia</th></tr></thead><tbody id="indFilasPrecios"></tbody></table></div>';
+      cont.innerHTML = h;
+      document.getElementById("indTipo").value = E.tipo;
+      document.getElementById("indBuscar").addEventListener("input", function (e) { E.filtro = e.target.value; filasPrecios(); });
+      document.getElementById("indTipo").addEventListener("change", function (e) { E.tipo = e.target.value; filasPrecios(); });
+      filasPrecios();
+    }
+
+    function filasPrecios() {
+      const q = E.filtro.trim().toLowerCase();
+      const filas = E.datos.precios.filas.filter(function (f) {
+        if (q && (f.codigo + " " + f.producto).toLowerCase().indexOf(q) < 0) return false;
+        if (E.tipo === "alza") return f.pct != null && f.pct > 0.005;
+        if (E.tipo === "baja") return f.pct != null && f.pct < -0.005;
+        if (E.tipo === "igual") return f.pct != null && Math.abs(f.pct) <= 0.005;
+        return true;
+      });
+      document.getElementById("indFilasPrecios").innerHTML = filas.length ? filas.map(function (f) {
+        return "<tr><td>" + esc(f.codigo) + "</td><td>" + esc(f.producto) + "</td><td>" + esc(f.presentacion) + "</td><td>" + money(f.prom_previo) + "</td><td><strong>" + money(f.prom_actual) + "</strong></td>" +
+          '<td style="color:' + colorVar(f.pct) + ';">' + (f.dif == null ? "—" : (f.dif > 0 ? "+" : "") + money(f.dif)) + '</td><td style="color:' + colorVar(f.pct) + ';font-weight:600;">' + flecha(f.pct) + pct(f.pct, true) + "</td>" +
+          '<td title="' + esc(f.prov_min) + '">' + money(f.minimo) + '<div style="font-size:0.7rem;color:#777;">' + esc(f.prov_min) + "</div></td><td>" + spark(f.serie) + "</td></tr>";
+      }).join("") : '<tr><td colspan="9" style="color:#777;">Ningún producto coincide con el filtro.</td></tr>';
+    }
+
+    // Mostrar/ocultar la pestaña sin depender del manejador general
+    document.querySelectorAll("button[data-tab]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        setTimeout(function () {
+          const es = b === boton;
+          seccion.style.display = es ? "block" : "none";
+          if (es) {
+            document.querySelectorAll('section[id^="tab-"]').forEach(function (s) { if (s !== seccion) s.style.display = "none"; });
+            document.querySelectorAll("button[data-tab]").forEach(function (x) { x.classList.toggle("active", x === boton); });
+            if (!E.cargado) iniciar(); else cargar();
+          }
+        }, 0);
+      });
+    });
+  })();
+
   async function aplicarPedidoPct() {
 
     const {

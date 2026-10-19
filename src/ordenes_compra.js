@@ -409,4 +409,5 @@ module.exports = function registrarRutasOrdenesCompra(app, requireAdmin) {
       res.status(500).json({ error: falta ? "Falta instalar la librería pdfkit en el servidor." : "Error generando el PDF." });
     }
   });
+  try { require("./indicadores_compra")(app, requireAdmin); } catch (e) { console.error("[INDICADORES] no se pudo registrar:", e.message); }
 };
