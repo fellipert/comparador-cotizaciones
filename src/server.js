@@ -4708,16 +4708,8 @@ app.post(
 
 
           if (demanda && !detalle) {
-
-            errores.push(
-              "Fila " +
-              nFila +
-              " (Excel): el PLU " +
-              codigo +
-              " no está en la demanda."
-            );
-
-            return;
+            /*plu-sin-demanda-se-guarda*/
+            console.log("[DISTRIBUCION % IMPORT] PLU sin demanda, se guarda igual: " + codigo);
           }
 
 
