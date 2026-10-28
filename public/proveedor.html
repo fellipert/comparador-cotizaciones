@@ -278,6 +278,26 @@ textarea {
   color:#8c2020;
 }
 
+.aviso-semana {
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+  padding:15px 17px;
+  margin-bottom:17px;
+  border-radius:12px;
+  background:#fff6c4;
+  border:1px solid #f0d64a;
+  border-left:6px solid #e31e24;
+  line-height:1.55;
+}
+
+.aviso-semana strong {
+  color:var(--verde2);
+  font-size:1.05rem;
+}
+
 @media(max-width:650px) {
 
   .header-inner {
@@ -321,6 +341,12 @@ textarea {
 <main class="container">
 
   <div id="mensaje"></div>
+
+  <div
+    id="avisoSemana"
+    class="aviso-semana"
+    style="display:none"
+  ></div>
 
 
   <section class="card">
@@ -689,7 +715,83 @@ textarea {
 
 
     renderCiclo();
+    renderAviso();
     renderProductos();
+
+  }
+
+
+  // Aviso de semana nueva: se muestra hasta que el proveedor
+  // lo marca como visto o envía su propuesta de la semana.
+  function renderAviso() {
+
+    const box =
+      document.getElementById("avisoSemana");
+
+    if (!portal.aviso || !portal.ciclo) {
+
+      box.style.display = "none";
+      box.innerHTML = "";
+
+      return;
+
+    }
+
+
+    box.innerHTML =
+
+      "<div>" +
+
+        "<strong>Se abrió la semana de cotización " +
+        esc(portal.ciclo.id) +
+        "</strong><br>" +
+
+        "Mercaldas espera tu propuesta comercial. " +
+        "Recepción de propuestas: " +
+        esc(portal.ciclo.fecha_inicio_recepcion) +
+        " al " +
+        esc(portal.ciclo.fecha_fin_recepcion) +
+        ".<br>" +
+
+        "El formato de cotización ya está listo para esta semana: " +
+        "registra tus precios en las tablas de abajo " +
+        "o descarga la plantilla Excel." +
+
+      "</div>" +
+
+      '<button class="btn-primary" id="btnAvisoVisto">' +
+        "Entendido" +
+      "</button>";
+
+    box.style.display = "flex";
+
+
+    document
+      .getElementById("btnAvisoVisto")
+      .addEventListener("click", marcarAvisoVisto);
+
+  }
+
+
+  async function marcarAvisoVisto() {
+
+    const aviso = portal.aviso;
+
+    portal.aviso = null;
+    renderAviso();
+
+    try {
+
+      await fetch(
+        "/api/proveedor/avisos/" +
+          encodeURIComponent(aviso.id) +
+          "/visto",
+        {
+          method:"POST"
+        }
+      );
+
+    } catch (err) {}
 
   }
 

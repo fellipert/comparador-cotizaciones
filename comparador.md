@@ -35,7 +35,13 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 - `src/oc_pdf.js`: PDF de la orden de compra (formato OC-1068, logo Mercaldas).
 - `src/indicadores_compra.js`: indicadores de compra por proveedor y evolución de precios (solo lectura).
 - `src/negociacion_hoja.js` y `src/negociacion_lector.js`: hoja de negociación en Excel (generación y lectura del precio final).
-- `public/assets/logo-mercaldas.{png,jpg}`: logo (se sube en Configuración; no está en git).
+- `src/avisos_proveedor.js`: aviso de semana nueva en el portal del proveedor (tabla `avisos_proveedor`).
+- `public/assets/logo-mercaldas.{png,jpg}`: logo (ya cargado en Configuración; no está en git).
+
+## Identidad visual
+
+- El logo de Mercaldas ya está implementado en la aplicación.
+- Todo el sistema usa los colores del logo (verde, amarillo y rojo de Mercaldas).
 
 ## Pestañas de la aplicación
 
@@ -49,7 +55,7 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 
 ## Flujo semanal
 
-1. Cargar cotizaciones del ciclo (ej. `COT-2026-43`).
+1. Abrir el ciclo de la semana (ej. `COT-2026-43`) y cargar las cotizaciones. Al abrirlo, todos los proveedores ven en su portal un aviso para enviar su propuesta, y el formato de cotización arranca en blanco. El aviso se oculta cuando el proveedor lo marca como visto o envía su propuesta; en la tarjeta del ciclo se ve cuántos lo vieron y cuántos ya cotizaron.
 2. Negociar y cerrar el **precio final** de cada producto por proveedor.
 3. Cargar la **demanda** (planeación) y la **distribución** por porcentajes (el total por PLU debe ser 100 %; las celdas en 0 o vacías se ignoran).
 4. Aplicar la distribución: genera `pedido_asignaciones`.
@@ -84,7 +90,7 @@ Los directorios `node_modules`, `data`, `.git`, `backups`, `assets` y `uploads` 
 
 ## Pendientes conocidos
 
-- Subir el logo de Mercaldas en Configuración y fijar el número inicial de OC antes de emitir la primera orden real.
+- Fijar el número inicial de OC antes de emitir la primera orden real.
 - Cargar demanda y distribución de la semana 43 (`COT-2026-43`); en el Excel de distribución hay que corregir la Guayaba Pera (PLU 14650), que suma 101 %.
 - Revisar el reporte "Descargar Excel" de cotizaciones: filas duplicadas y semanas mezcladas (el origen está en la tabla `quotes`).
 - Idea abierta: automatizar más la negociación (reglas de decisión automática) y agregar el indicador de ahorro entre propuesta inicial y precio final.

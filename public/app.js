@@ -975,10 +975,27 @@
       btnCerrar.dataset.cicloId = ciclo.id;
       btnAbrir.dataset.cicloId = ciclo.id;
 
+      await loadAvisosCiclo(ciclo.id);
+
     } catch (err) {
       document.getElementById("cicloFechas").textContent =
         "No se pudo cargar el ciclo activo.";
     }
+  }
+
+  // Seguimiento del aviso de semana nueva que reciben los proveedores en su portal
+  async function loadAvisosCiclo(cicloId) {
+    const linea = document.getElementById("cicloAvisos");
+    linea.style.display = "none";
+    try {
+      const r = await (await api("/api/avisos-proveedores/resumen?ciclo=" + encodeURIComponent(cicloId))).json();
+      if (!r.enviados) return;
+      linea.textContent =
+        "Aviso a proveedores: " + r.enviados + " enviados · " + r.vistos + " vistos · " +
+        r.con_propuesta + " con propuesta" +
+        (r.sin_usuario ? " · " + r.sin_usuario + " sin usuario del portal (no lo verán)" : "");
+      linea.style.display = "";
+    } catch (err) {}
   }
 
   document.getElementById("btnAbrirCiclo").addEventListener("click", async () => {
@@ -993,8 +1010,9 @@
     const codigo = "COT-" + anio + "-" + String(semana).padStart(2, "0");
 
     if (!confirm(
-      "¿Abrir el ciclo " + codigo + "?\\n\\n" +
-      "Las nuevas cotizaciones quedarán guardadas en esta semana."
+      "¿Abrir el ciclo " + codigo + "?\n\n" +
+      "Las nuevas cotizaciones quedarán guardadas en esta semana.\n" +
+      "Todos los proveedores verán en su portal el aviso para enviar su propuesta."
     )) {
       return;
     }
@@ -1017,7 +1035,10 @@
         throw new Error(data.error || "No fue posible abrir el ciclo.");
       }
 
-      toast("Ciclo " + data.ciclo.id + " abierto.");
+      toast(
+        "Ciclo " + data.ciclo.id + " abierto." +
+        (data.avisos ? " Aviso enviado a " + data.avisos.proveedores + " proveedores." : "")
+      );
 
       await loadCicloActual();
       await loadCiclosParaFiltro();

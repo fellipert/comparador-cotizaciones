@@ -7,6 +7,7 @@ const XLSX = require("xlsx");
 
 const db = require("./db");
 const { parseWorkbook } = require("./parser");
+const avisosProveedor = require("./avisos_proveedor");
 const ExcelJS = require("exceljs");
 const fs = require("fs");
 const {
@@ -62,6 +63,7 @@ require("./ordenes_compra")(app, requireAdmin);
 require("./negociacion_hoja")(app, requireAdmin);
 require("./promociones")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c), computeComparativo: (...a) => computeComparativo(...a) });
 require("./mas_caros")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c) });
+avisosProveedor(app, requireAdmin, requireProveedor);
 const BANNER_PRUEBAS = `(function () {
   function poner() {
     var b = document.createElement("div");
@@ -295,14 +297,19 @@ app.get("/api/proveedor/portal", requireProveedor, (req, res) => {
       propuesta: cotizados[p.codigo] || null
     }));
 
+    const puedeCotizar = !!(
+      ciclo &&
+      !ciclo.cerrado_en
+    );
+
     res.json({
       proveedor,
       usuario: req.usuarioActual.usuario,
       ciclo: ciclo || null,
-      puedeCotizar: !!(
-        ciclo &&
-        !ciclo.cerrado_en
-      ),
+      puedeCotizar,
+      aviso: puedeCotizar
+        ? avisosProveedor.avisoPendiente(proveedor, ciclo.id)
+        : null,
       habituales: items.filter(x => x.tipo === "habitual"),
       adicionales: items.filter(x => x.tipo !== "habitual")
     });
@@ -1696,13 +1703,23 @@ app.post("/api/ciclos/abrir-semana", (req, res) => {
 
   guardarSetting("ciclo_activo_id", ciclo.id);
 
+  // Avisa a todos los proveedores en su portal que ya pueden enviar la propuesta de esta semana.
+  // Si falla, el ciclo queda abierto igual: el aviso no debe impedir abrir la semana.
+  let avisos = null;
+  try {
+    avisos = avisosProveedor.avisarNuevaSemana(ciclo.id);
+  } catch (err) {
+    console.error("[AVISOS PROVEEDOR] no se pudieron crear:", err);
+  }
+
   const actualizado = db.prepare(
     "SELECT * FROM ciclos WHERE id = ?"
   ).get(ciclo.id);
 
   res.json({
     ok: true,
-    ciclo: actualizado
+    ciclo: actualizado,
+    avisos
   });
 });
 
@@ -6197,6 +6214,7 @@ app.put("/api/proveedores/:nombre", (req, res) => {
     db.prepare("UPDATE quotes SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
     db.prepare("UPDATE proveedor_productos SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
     db.prepare("UPDATE files SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
+    db.prepare("UPDATE OR IGNORE avisos_proveedor SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
   });
   renombrar();
 
