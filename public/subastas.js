@@ -124,9 +124,10 @@
   // ---------- Editor de la solicitud ----------
   function plazoPorDefecto() {
     const c = S.ciclos.find((x) => x.id === S.ciclo);
-    const candidato = c && c.fecha_fin_recepcion ? c.fecha_fin_recepcion + "T17:00" : null;
+    // La recepción cierra el martes a las 12:00 m. (igual que la solicitud automática al abrir la semana)
+    const candidato = c && c.fecha_fin_recepcion ? c.fecha_fin_recepcion + "T12:00" : null;
     if (candidato && new Date(candidato + ":00-05:00") > new Date()) return candidato;
-    return aLocal(new Date(Date.now() + 24 * 3600000).toISOString()).slice(0, 11) + "17:00";
+    return aLocal(new Date(Date.now() + 24 * 3600000).toISOString()).slice(0, 11) + "12:00";
   }
 
   async function abrirEditor(id) {

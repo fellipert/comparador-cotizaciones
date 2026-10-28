@@ -196,6 +196,64 @@ function avisarProveedores(s, inv, conCuenta) {
   return usuariosAvisados;
 }
 
+// Abre la solicitud y avisa a cada proveedor de sus productos (campana y correo)
+function enviarSubasta(s) {
+  const productos = productosDe(s.id);
+  const porCodigo = proveedoresPorCodigo(), conCuenta = proveedoresConCuenta();
+  const inv = invitados(productos, porCodigo);
+  if (!inv.size) return { error: "Ninguno de los productos tiene proveedores asociados. Asócialos en Configuración." };
+
+  const t = ahora();
+  db.transaction(() => {
+    db.prepare("UPDATE subastas SET estado = 'abierta', enviado_en = ?, actualizado_en = ? WHERE id = ?").run(t, t, s.id);
+    const ins = db.prepare(`
+      INSERT INTO subasta_proveedores (subasta_id, proveedor, productos_invitados, notificado_en) VALUES (?, ?, ?, ?)
+      ON CONFLICT(subasta_id, proveedor) DO UPDATE SET productos_invitados = excluded.productos_invitados, notificado_en = excluded.notificado_en
+    `);
+    for (const [prov, codigos] of inv) ins.run(s.id, prov, codigos.length, conCuenta.has(notificaciones.clave(prov)) ? t : null);
+  })();
+  const usuarios = avisarProveedores(subastaPorId(s.id), inv, conCuenta);
+  return {
+    ok: true, proveedores: inv.size, usuarios_avisados: usuarios,
+    sin_cuenta: [...inv.keys()].filter((p) => !conCuenta.has(notificaciones.clave(p))).sort(),
+    productos_sin_proveedor: productos.filter((p) => !(porCodigo.get(String(p.codigo)) || []).length).map((p) => p.codigo + " " + p.producto),
+  };
+}
+
+// Hora en que cierra la recepción el último día (martes), hora de Colombia
+const HORA_CIERRE_SEMANAL = "12:00";
+
+// Al abrir la semana se pide precio de todos los productos que tienen proveedor activo, con plazo hasta el
+// cierre de la recepción. Cada proveedor solo recibe los suyos. Si la semana ya tiene una solicitud, no se crea otra.
+function solicitudSemanal(ciclo, usuario) {
+  if (db.prepare("SELECT 1 FROM subastas WHERE ciclo_id = ? LIMIT 1").get(ciclo.id)) {
+    return { enviada: false, motivo: "La semana " + ciclo.id + " ya tiene una solicitud de cotización." };
+  }
+  const limite = leerFechaLimite(ciclo.fecha_fin_recepcion + "T" + HORA_CIERRE_SEMANAL);
+  if (!limite || new Date(limite) <= new Date()) {
+    return { enviada: false, motivo: "La recepción de " + ciclo.id + " ya cerró. Crea la solicitud en Subastas con un plazo nuevo." };
+  }
+  const filas = db.prepare(`
+    SELECT DISTINCT c.codigo, c.producto, c.presentacion
+    FROM proveedor_productos pp JOIN catalogo c ON c.codigo = pp.codigo
+    WHERE pp.activo = 1
+  `).all().map((c) => ({ codigo: String(c.codigo), producto: c.producto || "", presentacion: c.presentacion || "", cantidad_estimada: null, observacion: null }));
+  if (!filas.length) return { enviada: false, motivo: "Ningún producto tiene proveedores asociados. Asócialos en Configuración." };
+
+  const id = db.transaction(() => {
+    const info = db.prepare("INSERT INTO subastas (ciclo_id, titulo, observacion, fecha_limite, estado, creado_por, creado_en, actualizado_en) VALUES (?, ?, NULL, ?, 'borrador', ?, ?, ?)")
+      .run(ciclo.id, "Solicitud de cotización " + ciclo.id, limite, usuario || null, ahora(), ahora());
+    guardarProductos(info.lastInsertRowid, filas);
+    return info.lastInsertRowid;
+  })();
+  const r = enviarSubasta(subastaPorId(id));
+  if (r.error) {
+    db.prepare("DELETE FROM subastas WHERE id = ?").run(id);
+    return { enviada: false, motivo: r.error };
+  }
+  return Object.assign({ enviada: true, id, productos: filas.length, fecha_limite: limite }, r);
+}
+
 module.exports = function registrarSubastas(app, deps) {
   const soloAdmin = auth.requireAdmin;
   const adminOPlaneacion = auth.requireRol("admin", "planeacion");
@@ -315,27 +373,10 @@ module.exports = function registrarSubastas(app, deps) {
     const ciclo = db.prepare("SELECT * FROM ciclos WHERE id = ?").get(s.ciclo_id);
     if (!ciclo || ciclo.cerrado_en) return res.status(400).json({ error: "La semana " + s.ciclo_id + " está cerrada. Ábrela antes de enviar la solicitud." });
     if (new Date(s.fecha_limite) <= new Date()) return res.status(400).json({ error: "La fecha límite ya pasó. Cámbiala antes de enviar." });
-    const productos = productosDe(s.id);
-    const porCodigo = proveedoresPorCodigo(), conCuenta = proveedoresConCuenta();
-    const inv = invitados(productos, porCodigo);
-    if (!inv.size) return res.status(400).json({ error: "Ninguno de los productos tiene proveedores asociados. Asócialos en Configuración." });
-
-    const t = ahora();
-    db.transaction(() => {
-      db.prepare("UPDATE subastas SET estado = 'abierta', enviado_en = ?, actualizado_en = ? WHERE id = ?").run(t, t, s.id);
-      const ins = db.prepare(`
-        INSERT INTO subasta_proveedores (subasta_id, proveedor, productos_invitados, notificado_en) VALUES (?, ?, ?, ?)
-        ON CONFLICT(subasta_id, proveedor) DO UPDATE SET productos_invitados = excluded.productos_invitados, notificado_en = excluded.notificado_en
-      `);
-      for (const [prov, codigos] of inv) ins.run(s.id, prov, codigos.length, conCuenta.has(notificaciones.clave(prov)) ? t : null);
-    })();
-    const usuarios = avisarProveedores(subastaPorId(s.id), inv, conCuenta);
-    const sinCuenta = [...inv.keys()].filter((p) => !conCuenta.has(notificaciones.clave(p))).sort();
-    auth.bitacora(req, "subasta_enviada", "#" + s.id + " a " + inv.size + " proveedores");
-    res.json({
-      ok: true, proveedores: inv.size, usuarios_avisados: usuarios, sin_cuenta: sinCuenta,
-      productos_sin_proveedor: productos.filter((p) => !(porCodigo.get(String(p.codigo)) || []).length).map((p) => p.codigo + " " + p.producto),
-    });
+    const r = enviarSubasta(s);
+    if (r.error) return res.status(400).json({ error: r.error });
+    auth.bitacora(req, "subasta_enviada", "#" + s.id + " a " + r.proveedores + " proveedores");
+    res.json(r);
   });
 
   app.post("/api/subastas/:id(\\d+)/cerrar", soloAdmin, (req, res) => {
@@ -392,4 +433,4 @@ module.exports = function registrarSubastas(app, deps) {
   });
 };
 
-Object.assign(module.exports, { subastaPorId, productosDe, estadoEfectivo, fechaBogota, proveedoresPorCodigo });
+Object.assign(module.exports, { subastaPorId, productosDe, estadoEfectivo, fechaBogota, proveedoresPorCodigo, solicitudSemanal, HORA_CIERRE_SEMANAL });

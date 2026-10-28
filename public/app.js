@@ -1000,8 +1000,10 @@
     const codigo = "COT-" + anio + "-" + String(semana).padStart(2, "0");
 
     if (!confirm(
-      "¿Abrir el ciclo " + codigo + "?\\n\\n" +
-      "Las nuevas cotizaciones quedarán guardadas en esta semana."
+      "¿Abrir el ciclo " + codigo + "?\n\n" +
+      "Las nuevas cotizaciones quedarán guardadas en esta semana.\n" +
+      "Se enviará a todos los proveedores la solicitud de cotización de sus productos (aviso y correo), " +
+      "con plazo hasta el martes a las 12:00 m."
     )) {
       return;
     }
@@ -1024,7 +1026,15 @@
         throw new Error(data.error || "No fue posible abrir el ciclo.");
       }
 
-      toast("Ciclo " + data.ciclo.id + " abierto.");
+      const sol = data.solicitud;
+      toast(
+        "Ciclo " + data.ciclo.id + " abierto. " +
+        (!sol ? "" :
+          sol.enviada
+            ? "Solicitud de cotización enviada a " + sol.proveedores + " proveedores" +
+              (sol.sin_cuenta && sol.sin_cuenta.length ? " (" + sol.sin_cuenta.length + " sin cuenta en el portal)." : ".")
+            : sol.motivo)
+      );
 
       await loadCicloActual();
       await loadCiclosParaFiltro();

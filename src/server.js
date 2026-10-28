@@ -8,6 +8,7 @@ const XLSX = require("xlsx");
 const db = require("./db");
 const auth = require("./auth");
 const notificaciones = require("./notificaciones");
+const subastas = require("./subastas");
 const { requireAdmin, requireRol, requireSesion } = auth;
 const { parseWorkbook } = require("./parser");
 const ExcelJS = require("exceljs");
@@ -108,7 +109,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 auth.registrarRutas(app);
 notificaciones.registrarRutas(app, requireSesion);
 require("./usuarios_admin")(app);
-require("./subastas")(app, { obtenerSemanaTrabajo: () => obtenerSemanaTrabajo() });
+subastas(app, { obtenerSemanaTrabajo: () => obtenerSemanaTrabajo() });
 require("./portal_proveedor")(app);
 
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
@@ -342,38 +343,63 @@ function obtenerSetting(key) {
 }
 
 /*
-  Devuelve el jueves correspondiente a una semana ISO.
+  Devuelve el miércoles correspondiente a una semana ISO (día en que empieza la vigencia del ciclo).
 */
-function juevesSemanaISO(anio, semana) {
+function miercolesSemanaISO(anio, semana) {
   const enero4 = new Date(Date.UTC(anio, 0, 4));
   const dia = enero4.getUTCDay() || 7;
 
   const lunesSemana1 = new Date(enero4);
   lunesSemana1.setUTCDate(enero4.getUTCDate() - dia + 1);
 
-  const jueves = new Date(lunesSemana1);
-  jueves.setUTCDate(
-    lunesSemana1.getUTCDate() + ((semana - 1) * 7) + 3
+  const miercoles = new Date(lunesSemana1);
+  miercoles.setUTCDate(
+    lunesSemana1.getUTCDate() + ((semana - 1) * 7) + 2
   );
 
-  return jueves.toISOString().slice(0, 10);
+  return miercoles.toISOString().slice(0, 10);
 }
 
 function obtenerOCrearCicloPorSemana(anio, semana) {
   const codigo = "COT-" + anio + "-" + String(semana).padStart(2, "0");
 
+  // El número es la semana en que RIGE: la recepción empieza el viernes anterior a ese miércoles
+  const miercolesVigencia = miercolesSemanaISO(anio, semana);
+  const dRecepcion = new Date(miercolesVigencia + "T00:00:00Z");
+  dRecepcion.setUTCDate(dRecepcion.getUTCDate() - 5);
+  const ventana = calcularVentanaRecepcion(dRecepcion.toISOString().slice(0, 10));
+
   let ciclo = db.prepare(
     "SELECT * FROM ciclos WHERE id = ?"
   ).get(codigo);
 
-  if (ciclo) return ciclo;
+  if (ciclo) {
+    // Una semana creada con el calendario anterior pasa al actual mientras no tenga cotizaciones ni solicitudes
+    const sinUso =
+      !db.prepare("SELECT 1 FROM quotes WHERE ciclo_id = ? LIMIT 1").get(codigo) &&
+      !db.prepare("SELECT 1 FROM subastas WHERE ciclo_id = ? LIMIT 1").get(codigo);
 
-  // El número es la semana en que RIGE: la recepción es el jueves de la semana anterior
-  const juevesVigencia = juevesSemanaISO(anio, semana);
-  const dRecepcion = new Date(juevesVigencia + "T00:00:00Z");
-  dRecepcion.setUTCDate(dRecepcion.getUTCDate() - 7);
-  const jueves = dRecepcion.toISOString().slice(0, 10);
-  const ventana = calcularVentanaRecepcion(jueves);
+    if (sinUso && ciclo.fecha_inicio_recepcion !== ventana.fecha_inicio_recepcion) {
+      db.prepare(`
+        UPDATE ciclos
+        SET fecha_inicio_recepcion = ?,
+            fecha_fin_recepcion = ?,
+            fecha_inicio_vigencia = ?,
+            fecha_fin_vigencia = ?
+        WHERE id = ?
+      `).run(
+        ventana.fecha_inicio_recepcion,
+        ventana.fecha_fin_recepcion,
+        ventana.fecha_inicio_vigencia,
+        ventana.fecha_fin_vigencia,
+        codigo
+      );
+
+      ciclo = db.prepare("SELECT * FROM ciclos WHERE id = ?").get(codigo);
+    }
+
+    return ciclo;
+  }
 
   db.prepare(`
     INSERT INTO ciclos (
@@ -569,9 +595,23 @@ app.post("/api/ciclos/abrir-semana", (req, res) => {
     "SELECT * FROM ciclos WHERE id = ?"
   ).get(ciclo.id);
 
+  // Pide precio a todos los proveedores de sus productos: aviso en la campana y correo.
+  // Si falla, la semana queda abierta igual y la solicitud se puede crear a mano en Subastas.
+  let solicitud;
+  try {
+    solicitud = subastas.solicitudSemanal(actualizado, req.usuarioActual && req.usuarioActual.usuario);
+    if (solicitud.enviada) {
+      auth.bitacora(req, "subasta_enviada", "#" + solicitud.id + " automática al abrir " + ciclo.id + " a " + solicitud.proveedores + " proveedores");
+    }
+  } catch (err) {
+    console.error("[SOLICITUD SEMANAL]", err);
+    solicitud = { enviada: false, motivo: "No se pudo enviar la solicitud automática. Créala en Subastas." };
+  }
+
   res.json({
     ok: true,
-    ciclo: actualizado
+    ciclo: actualizado,
+    solicitud
   });
 });
 

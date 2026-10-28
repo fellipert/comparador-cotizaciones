@@ -200,15 +200,16 @@ function computeVistaProveedor(quotes, proveedor, contrapropuestaPct) {
   return items;
 }
 
+// Una cotización rige desde el miércoles siguiente y durante 7 días (miércoles a martes)
 function calcularSemanaVigencia(fechaCotizacionISO) {
   const d = new Date(fechaCotizacionISO);
   if (isNaN(d.getTime())) return null;
   const dia = d.getDay();
-  const diasHastaDomingo = (7 - dia) % 7 || 7;
+  const diasHastaMiercoles = (3 - dia + 7) % 7 || 7;
   const inicio = new Date(d);
-  inicio.setDate(d.getDate() + diasHastaDomingo);
+  inicio.setDate(d.getDate() + diasHastaMiercoles);
   const fin = new Date(inicio);
-  fin.setDate(inicio.getDate() + 5);
+  fin.setDate(inicio.getDate() + 6);
   const fmt = (x) => x.toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "UTC" });
   return {
     inicio: inicio.toISOString().slice(0, 10),
@@ -230,30 +231,29 @@ function getISOWeek(date) {
 
 /**
  * Dado cualquier fecha, calcula a qué ciclo Mercaldas pertenece:
- * la ventana de recepción (jueves a sábado) y la vigencia (domingo a viernes) que la contienen.
+ * la ventana de recepción (viernes a martes, cierra el martes a las 12:00 m.)
+ * y la vigencia de precios (miércoles a martes) que la siguen.
  */
 function calcularVentanaRecepcion(fechaISO) {
   const f = new Date(fechaISO + "T00:00:00Z");
   const dia = f.getUTCDay();
-  const diasDesdeJueves = (dia - 4 + 7) % 7;
-  const jueves = new Date(f);
-  jueves.setUTCDate(f.getUTCDate() - diasDesdeJueves);
-  const sabado = new Date(jueves); sabado.setUTCDate(jueves.getUTCDate() + 2);
-  const domingoInicio = new Date(jueves); domingoInicio.setUTCDate(jueves.getUTCDate() + 3);
-  const domingoFin = new Date(domingoInicio); domingoFin.setUTCDate(domingoInicio.getUTCDate() + 5);
+  const diasDesdeViernes = (dia - 5 + 7) % 7;
+  const viernes = new Date(f);
+  viernes.setUTCDate(f.getUTCDate() - diasDesdeViernes);
+  const martesCierre = new Date(viernes); martesCierre.setUTCDate(viernes.getUTCDate() + 4);
+  const miercolesInicio = new Date(viernes); miercolesInicio.setUTCDate(viernes.getUTCDate() + 5);
+  const martesFin = new Date(miercolesInicio); martesFin.setUTCDate(miercolesInicio.getUTCDate() + 6);
   const iso = (x) => x.toISOString().slice(0, 10);
-  // El número del ciclo es la semana ISO en que RIGE (jueves de la semana siguiente a la recepción)
-  const juevesVigencia = new Date(jueves);
-  juevesVigencia.setUTCDate(jueves.getUTCDate() + 7);
-  const { anio, semana } = getISOWeek(juevesVigencia);
+  // El número del ciclo es la semana ISO en que RIGE (la del miércoles en que empieza la vigencia)
+  const { anio, semana } = getISOWeek(miercolesInicio);
   return {
     id: "COT-" + anio + "-" + String(semana).padStart(2, "0"),
     anio,
     semana_calendario: semana,
-    fecha_inicio_recepcion: iso(jueves),
-    fecha_fin_recepcion: iso(sabado),
-    fecha_inicio_vigencia: iso(domingoInicio),
-    fecha_fin_vigencia: iso(domingoFin),
+    fecha_inicio_recepcion: iso(viernes),
+    fecha_fin_recepcion: iso(martesCierre),
+    fecha_inicio_vigencia: iso(miercolesInicio),
+    fecha_fin_vigencia: iso(martesFin),
   };
 }
 

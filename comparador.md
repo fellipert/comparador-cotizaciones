@@ -80,7 +80,7 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 
 ## Flujo semanal
 
-1. Abrir la semana (ciclo, ej. `COT-2026-43`) y crear la **subasta** con los productos que se necesitan; al enviarla, cada proveedor recibe aviso y correo solo de sus productos (`proveedor_productos` activo).
+1. Abrir la semana (ciclo, ej. `COT-2026-43`). Al abrirla se crea y envía sola la **solicitud de cotización** de la semana (`solicitudSemanal` en `src/subastas.js`) con todos los productos que tienen proveedor activo y plazo hasta el martes a las 12:00 m.; cada proveedor recibe aviso en la campana y correo solo de sus productos (`proveedor_productos` activo). Si la semana ya tiene una solicitud o su recepción ya cerró, no se envía otra. Para pedir productos extra se crea otra **subasta** a mano.
 2. Los proveedores cotizan en el portal hasta la fecha límite (sus ofertas quedan en `quotes`, archivo «Portal proveedor - ciclo»). Quien no tenga acceso puede seguir enviando Excel.
 3. Iniciar la negociación de cada proveedor y **enviar la contrapropuesta al portal**. El proveedor acepta, mantiene su precio o propone uno intermedio; su respuesta queda como **precio final**, igual que con el Excel.
 4. Cargar la **demanda** (planeación) y la **distribución** por porcentajes (el total por PLU debe ser 100 %; las celdas en 0 o vacías se ignoran).
@@ -106,6 +106,7 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 ## Reglas de negocio importantes
 
 - **Ciclo**: `COT-AAAA-NN`; **periodo**: `LUNES-MARTES`, etc. Cada semana conserva sus propios archivos y datos.
+- **Calendario del ciclo** (`calcularVentanaRecepcion` en `src/analytics.js`): recepción de **viernes a martes** (cierra el martes a las 12:00 m., hora Colombia) y vigencia de precios de **miércoles a martes**. `NN` es la semana ISO del miércoles en que empiezan a regir los precios. Una semana creada con el calendario anterior (jueves a sábado / domingo a viernes) se ajusta al abrirla, solo si todavía no tiene cotizaciones ni solicitudes.
 - **Precio de la OC** = `precio_final` de la negociación del ciclo, buscado por proveedor + PLU con nombres normalizados (sin tildes, mayúsculas y espacios).
 - **Numeración OC**: configurable entre 1 y 10000; el siguiente número es `oc_consecutivo_v2 + 1` y debe ser mayor que la última orden emitida.
 - Moneda `es-CO` (`$9.500`) y hora de Bogotá (`America/Bogota`).
