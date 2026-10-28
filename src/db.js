@@ -133,6 +133,67 @@ if (totalProveedoresRegistrados === 0) {
   sembrar(nombresExistentes);
 }
 
+// ---------- Usuarios: tres roles (admin, planeacion, proveedor), correo, estado y bloqueo por intentos ----------
+const columnasUsuarios = db.prepare("PRAGMA table_info(usuarios)").all().map((c) => c.name);
+[
+  ["nombre", "TEXT"],
+  ["email", "TEXT"],
+  ["estado", "TEXT NOT NULL DEFAULT 'activo'"], // activo | inactivo | pendiente | rechazado
+  ["intentos_fallidos", "INTEGER NOT NULL DEFAULT 0"],
+  ["bloqueado_hasta", "TEXT"],
+  ["debe_cambiar_password", "INTEGER NOT NULL DEFAULT 0"],
+  ["ultimo_acceso", "TEXT"],
+  ["actualizado_en", "TEXT"],
+  ["datos_registro", "TEXT"], // JSON con lo que escribió el proveedor al registrarse
+].forEach(([col, tipo]) => {
+  if (!columnasUsuarios.includes(col)) db.exec("ALTER TABLE usuarios ADD COLUMN " + col + " " + tipo);
+});
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(LOWER(email)) WHERE email IS NOT NULL AND email <> ''");
+
+const columnasProveedores = db.prepare("PRAGMA table_info(proveedores)").all().map((c) => c.name);
+if (!columnasProveedores.includes("nit")) db.exec("ALTER TABLE proveedores ADD COLUMN nit TEXT");
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tokens_recuperacion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    proposito TEXT NOT NULL DEFAULT 'recuperar',
+    expira_en TEXT NOT NULL,
+    usado_en TEXT,
+    creado_en TEXT NOT NULL,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS notificaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    tipo TEXT NOT NULL,
+    titulo TEXT NOT NULL,
+    mensaje TEXT,
+    enlace TEXT,
+    leida_en TEXT,
+    creado_en TEXT NOT NULL,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_notificaciones_usuario ON notificaciones(usuario_id, leida_en);
+
+  CREATE TABLE IF NOT EXISTS bitacora (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario TEXT,
+    accion TEXT NOT NULL,
+    detalle TEXT,
+    ip TEXT,
+    creado_en TEXT NOT NULL
+  );
+`);
+
+// Las sesiones ahora guardan el hash del token: las de antes (token en claro) se cierran una sola vez
+if (!db.prepare("SELECT 1 FROM settings WHERE key = 'sesiones_con_hash'").get()) {
+  db.exec("DELETE FROM sesiones");
+  db.prepare("INSERT INTO settings (key, value) VALUES ('sesiones_con_hash', '1')").run();
+}
+
 function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 64).toString("hex");
 }
@@ -142,8 +203,8 @@ if (totalUsuarios === 0) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = hashPassword(passwordInicial, salt);
   db.prepare(`
-    INSERT INTO usuarios (usuario, password_hash, password_salt, tipo, proveedor_nombre, creado_en)
-    VALUES ('admin', ?, ?, 'admin', NULL, ?)
+    INSERT INTO usuarios (usuario, password_hash, password_salt, tipo, proveedor_nombre, creado_en, nombre, estado)
+    VALUES ('admin', ?, ?, 'admin', NULL, ?, 'Administrador', 'activo')
   `).run(hash, salt, new Date().toISOString());
   console.log("=".repeat(60));
   console.log("USUARIO ADMINISTRADOR CREADO POR PRIMERA VEZ");

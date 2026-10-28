@@ -3,42 +3,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Comparador de Cotizaciones</title>
+<title>Comparador de cotizaciones · Mercaldas</title>
+<meta name="theme-color" content="#038A41">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/marca/mercaldas-icono.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Barlow+Semi+Condensed:ital,wght@0,600;0,700;1,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <div class="wrap">
+  <!-- Menú agrupado por etapa de la semana. data-roles: pestañas que también ve Planeación (las demás son solo del administrador) -->
+  <nav class="tabs" aria-label="Secciones">
+    <div class="nav-marca">
+      <img src="/marca/mercaldas-logo.png" alt="Mercaldas" width="170" height="44">
+      <span>Compras Fruver</span>
+    </div>
+    <div class="nav-grupo">
+      <span class="nav-grupo-titulo">Cotizar</span>
+      <button data-tab="cargar" class="active">Cargar cotizaciones</button>
+      <button data-tab="subastas">Subastas <span class="count" id="countSubastas" style="display:none">0</span></button>
+      <button data-tab="subasta-resumen" data-roles="planeacion">Productos en subasta</button>
+      <button data-tab="comparativo">Comparativo <span class="count" id="countComparativo">0</span></button>
+      <button data-tab="alertas">Alertas <span class="count" id="countAlertas">0</span></button>
+      <button data-tab="promociones">Productos en promoción <span class="count" id="countPromos">0</span></button>
+      <button data-tab="por-proveedor">Por proveedor</button>
+    </div>
+    <div class="nav-grupo">
+      <span class="nav-grupo-titulo">Negociar</span>
+      <button data-tab="hoja-negociacion">Negociación</button>
+      <button data-tab="negociacion">Negociación (anterior)</button>
+    </div>
+    <div class="nav-grupo">
+      <span class="nav-grupo-titulo">Comprar</span>
+      <button data-tab="pedidos" data-roles="admin planeacion">Pedidos</button>
+      <button data-tab="ordenes-compra" data-roles="admin planeacion">Órdenes de compra</button>
+      <button data-tab="indicadores-compra">Indicadores de compra</button>
+    </div>
+    <div class="nav-grupo">
+      <span class="nav-grupo-titulo">Administrar</span>
+      <button data-tab="usuarios">Usuarios <span class="count" id="countUsuariosPendientes" style="display:none">0</span></button>
+      <button data-tab="configuracion">Configuración</button>
+    </div>
+  </nav>
+
   <header class="top">
-    <div class="brand">
-      <div class="brand-mark">🥬</div>
-      <div>
-        <h1>Comparador de Cotizaciones</h1>
-        <p class="subtitle">Fruver Mercaldas — datos guardados en el servidor</p>
+    <h1>Comparador de cotizaciones</h1>
+    <div class="barra-usuario">
+      <button class="btn-secondary solo-admin" id="btnExport" disabled title="Descarga las cotizaciones de la semana de trabajo">Descargar Excel de la semana</button>
+      <button class="campana" id="btnAvisos" type="button" title="Avisos" aria-label="Avisos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="num" id="avisosNum">0</span>
+      </button>
+      <div class="menu-usuario">
+        <button type="button" class="usuario-boton" id="btnUsuario" aria-haspopup="true" aria-expanded="false" aria-controls="menuUsuario">
+          <span class="usuario-chip" id="usuarioChip"></span><span class="flecha" aria-hidden="true">▾</span>
+        </button>
+        <div class="menu-usuario-lista" id="menuUsuario" hidden>
+          <button type="button" id="btnCambiarPassword">Cambiar contraseña</button>
+          <button type="button" id="btnLogout">Cerrar sesión</button>
+        </div>
       </div>
     </div>
-    <div style="display:flex; gap:10px;">
-      <button class="btn-secondary" id="btnClear">Borrar todos los datos</button>
-      <button class="btn-primary" id="btnExport" disabled>⬇ Descargar Excel</button>
-      <button class="btn-secondary" id="btnLogout">Cerrar sesión</button>
-    </div>
   </header>
-
-  <nav class="tabs">
-    <button data-tab="cargar" class="active">Cargar cotizaciones</button>
-    <button data-tab="comparativo">Comparativo <span class="count" id="countComparativo">0</span></button>
-    <button data-tab="alertas">Alertas <span class="count" id="countAlertas">0</span></button>
-    <button data-tab="promociones">Productos en Promoción <span class="count" id="countPromos">0</span></button>
-    <button data-tab="por-proveedor">Por Proveedor</button>
-    <button data-tab="hoja-negociacion">Negociación</button>
-    <button data-tab="negociacion">Negociación (anterior)</button>
-    <button data-tab="pedidos">Pedidos</button>
-    <button data-tab="configuracion">Configuración</button>
-    <button data-tab="ordenes-compra">Órdenes de Compra</button>
-    <button data-tab="indicadores-compra">Indicadores de compra</button>
-  </nav>
 
   <section id="tab-cargar">
     <div class="card" id="cicloActualCard">
@@ -128,7 +156,7 @@
         </select>
         <span class="legend">
           <span><span class="dot" style="background:var(--best)"></span>Mejor precio</span>
-          <span><span class="dot" style="background:var(--second)"></span>Segundo mejor</span>
+          <span><span class="dot" style="background:var(--acento);box-shadow:inset 0 0 0 1px var(--second)"></span>Segundo mejor</span>
           <span><span class="dot" style="background:var(--warn)"></span>Diferencia &gt; 15%</span>
         </span>
       </div>
@@ -440,7 +468,7 @@
         </button>
 
         <button
-          class="btn-secondary"
+          class="btn-secondary solo-admin"
           id="btnConfigNumeracionOC"
           type="button">
           ⚙ Numeración OC
@@ -700,7 +728,7 @@
         </div>
 
         <label style="font-size:0.78rem; color:var(--ink-soft); font-weight:600; display:block; margin-top:12px;">¿Este proveedor cotiza este producto a diario o una vez por semana?</label>
-        <p style="font-size:0.75rem; color:var(--ink-soft); margin:2px 0 8px;">Si es semanal, el precio que llegue jueves/viernes/sábado se toma como el de la semana siguiente (domingo a domingo).</p>
+        <p style="font-size:0.75rem; color:var(--ink-soft); margin:2px 0 8px;">Si es semanal, el precio que llegue de viernes a martes (hasta las 12:00 m.) se toma como el de la semana siguiente (miércoles a martes).</p>
         <div style="display:flex; gap:14px;">
           <label style="display:flex; align-items:center; gap:6px; font-size:0.88rem;">
             <input type="radio" name="agpFrecuencia" value="diario" checked> Diario
@@ -751,14 +779,18 @@
 
   <section id="tab-indicadores-compra" style="display:none"><div id="indRaiz"></div></section>
 
+  <section id="tab-subastas" style="display:none"><div id="subRaiz"></div></section>
+  <section id="tab-subasta-resumen" style="display:none"><div id="subResumenRaiz"></div></section>
+  <section id="tab-usuarios" style="display:none"><div id="usrRaiz"></div></section>
+
   <section id="tab-configuracion" style="display:none">
 
     <div class="card">
-      <p class="section-title">Imagen corporativa Mercaldas</p>
+      <p class="section-title">Logo de las órdenes de compra</p>
 
-      <p style="color:var(--ink-soft);font-size:0.85rem;">
-        Este logo se utilizará en la aplicación, cotizaciones,
-        contrapropuestas y formatos de proveedores.
+      <p style="color:var(--ink-soft);font-size:0.9rem;">
+        Aparece en el encabezado del PDF de cada orden de compra. Si no subes uno,
+        se usa el ícono de Mercaldas.
       </p>
 
       <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:14px;">
@@ -773,7 +805,7 @@
             max-height:90px;
             object-fit:contain;
             background:white;
-            border:1px solid #dce8df;
+            border:1px solid var(--border);
             border-radius:10px;
             padding:8px;
           "
@@ -924,6 +956,15 @@
         </table>
       </div>
     </div>
+
+    <div class="card zona-riesgo">
+      <p class="section-title">Borrar todas las cotizaciones</p>
+      <p style="color:var(--ink-soft);font-size:0.9rem;margin-top:-8px;">
+        Elimina las cotizaciones y los archivos cargados de todas las semanas. No toca proveedores, catálogo,
+        negociaciones, pedidos ni órdenes de compra. No se puede deshacer.
+      </p>
+      <button class="btn-secondary btn-peligro solo-admin" id="btnClear" type="button">Borrar todas las cotizaciones</button>
+    </div>
   </section>
 
   <div id="proveedorModalOverlay" class="modal-overlay" style="display:none;">
@@ -971,6 +1012,9 @@
 <div id="toast"></div>
 <script src="/entorno.js"></script>
 <script src="/app.js"></script>
+<script src="/sesion.js"></script>
+<script src="/subastas.js"></script>
+<script src="/usuarios.js"></script>
 
 
   <div
@@ -1045,7 +1089,7 @@
         class="table-scroll"
         style="margin-top:16px;">
 
-        <table>
+        <table id="pedidoDistribucionTabla">
 
           <thead>
             <tr>
