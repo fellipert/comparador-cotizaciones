@@ -1,1374 +1,309 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1.0"
->
-
-<title>
-Portal de Proveedores - Mercaldas
-</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portal de proveedores · Mercaldas</title>
+<meta name="theme-color" content="#038A41">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/marca/mercaldas-icono.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Barlow+Semi+Condensed:ital,wght@0,600;0,700;1,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
 <style>
-
-:root {
-  --verde:#08753e;
-  --verde2:#075c32;
-  --fondo:#f5f7f6;
-  --card:#ffffff;
-  --texto:#24342b;
-  --suave:#6c7971;
-  --borde:#dce5df;
-  --azul:#2563eb;
-}
-
-* {
-  box-sizing:border-box;
-}
-
-body {
-  margin:0;
-  font-family:Arial, Helvetica, sans-serif;
-  background:var(--fondo);
-  color:var(--texto);
-}
-
-header {
-  background:var(--verde);
-  color:#fff;
-  padding:18px;
-}
-
-.header-inner {
-  max-width:1150px;
-  margin:auto;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:15px;
-}
-
-h1 {
-  margin:0;
-  font-size:1.25rem;
-}
-
-.container {
-  max-width:1150px;
-  margin:22px auto;
-  padding:0 15px 50px;
-}
-
-.card {
-  background:var(--card);
-  border:1px solid var(--borde);
-  border-radius:12px;
-  padding:20px;
-  margin-bottom:17px;
-}
-
-.nombre-proveedor {
-  font-size:1.5rem;
-  font-weight:700;
-  color:var(--verde2);
-}
-
-.suave {
-  color:var(--suave);
-}
-
-.ciclo {
-  margin-top:14px;
-  padding:13px;
-  border-radius:9px;
-  background:#edf8f1;
-  line-height:1.55;
-}
-
-.toolbar {
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  margin-top:15px;
-}
-
-button {
-  border:0;
-  border-radius:8px;
-  padding:10px 15px;
-  cursor:pointer;
-  font-weight:650;
-}
-
-.btn-primary {
-  background:var(--verde);
-  color:white;
-}
-
-.btn-secondary {
-  background:white;
-  color:var(--verde);
-  border:1px solid #ccd9d1;
-}
-
-.section-title {
-  font-weight:700;
-  font-size:1.08rem;
-}
-
-.table-scroll {
-  overflow:auto;
-  margin-top:13px;
-}
-
-table {
-  width:100%;
-  border-collapse:collapse;
-}
-
-th,
-td {
-  padding:11px 10px;
-  border-bottom:1px solid var(--borde);
-  text-align:left;
-}
-
-th {
-  font-size:.78rem;
-  color:var(--suave);
-  background:#fafcfb;
-}
-
-td {
-  font-size:.89rem;
-}
-
-.plu-link {
-  background:none;
-  padding:0;
-  color:var(--azul);
-  text-decoration:underline;
-  font-weight:700;
-}
-
-.estado {
-  font-size:.76rem;
-  padding:5px 9px;
-  border-radius:20px;
-  background:#edf5f0;
-  display:inline-block;
-}
-
-.estado.cotizado {
-  background:#dff3e7;
-  color:#075c32;
-}
-
-.temporada {
-  background:#fff9e8;
-}
-
-.empty {
-  color:var(--suave);
-  text-align:center;
-  padding:20px;
-}
-
-
-/* MODAL */
-
-.modal-overlay {
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.38);
-  display:none;
-  align-items:center;
-  justify-content:center;
-  z-index:1000;
-  padding:15px;
-}
-
-.modal {
-  width:min(520px, 100%);
-  background:white;
-  border-radius:14px;
-  padding:22px;
-  box-shadow:0 15px 45px rgba(0,0,0,.22);
-}
-
-.modal-header {
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-}
-
-.modal h2 {
-  margin:0;
-  color:var(--verde2);
-  font-size:1.25rem;
-}
-
-.field {
-  margin-top:14px;
-}
-
-.field label {
-  display:block;
-  font-size:.78rem;
-  font-weight:700;
-  color:var(--suave);
-  margin-bottom:5px;
-}
-
-.field input,
-.field select,
-.field textarea {
-  width:100%;
-  border:1px solid #cad7cf;
-  border-radius:8px;
-  padding:10px;
-  font-size:.95rem;
-}
-
-textarea {
-  min-height:80px;
-  resize:vertical;
-}
-
-.modal-actions {
-  display:flex;
-  gap:10px;
-  justify-content:flex-end;
-  margin-top:20px;
-}
-
-.check-line {
-  display:flex;
-  align-items:center;
-  gap:9px;
-  margin-top:15px;
-}
-
-.check-line input {
-  width:19px;
-  height:19px;
-}
-
-#mensaje {
-  display:none;
-  padding:12px;
-  border-radius:8px;
-  margin-bottom:15px;
-}
-
-#mensaje.ok {
-  display:block;
-  background:#e6f6ec;
-  color:#075c32;
-}
-
-#mensaje.error {
-  display:block;
-  background:#fdecec;
-  color:#8c2020;
-}
-
-@media(max-width:650px) {
-
-  .header-inner {
-    align-items:flex-start;
+  body { padding-left: 0; }
+  .wrap { max-width: 1100px; padding: 24px 16px 80px; }
+  .marca-portal { display: flex; align-items: center; gap: 16px; }
+  .marca-portal img { width: 150px; height: auto; display: block; }
+  .marca-portal .separador { width: 1px; align-self: stretch; background: var(--border); }
+  .secciones { display: flex; gap: 8px; margin: 0 0 18px; flex-wrap: wrap; }
+  .secciones button { background: var(--bg-card); border: 1px solid var(--border); color: var(--ink); padding: 9px 16px; border-radius: 10px; font-size: 1rem; }
+  .secciones button:hover { background: var(--acento-tint); }
+  .secciones button.activa { background: var(--acento); border-color: var(--acento); color: var(--sobre-acento); font-weight: 700; }
+  .secciones .count { display: inline-block; margin-left: 6px; background: var(--brand-tint); color: var(--brand-dark); border-radius: 999px; padding: 1px 8px; font-size: 0.78rem; font-weight: 700; }
+  .secciones button.activa .count { background: var(--sobre-acento); color: var(--acento); }
+  .secciones .count.alerta, .secciones button.activa .count.alerta { background: var(--rojo); color: #fff; }
+  .cab-sub { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 12px; }
+  .cab-sub h3 { font-family: var(--fuente-titulos); font-size: 1.25rem; margin: 0 0 4px; }
+  .limite { text-align: right; }
+  .precio { width: 120px; text-align: right; }
+  .obs { width: 220px; }
+  td .manual-input { font-size: 0.86rem; }
+  .respuesta { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
+  .respuesta label { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; white-space: nowrap; cursor: pointer; }
+  .respuesta input[type=number] { width: 110px; }
+  .vacio { text-align: center; padding: 34px 16px; color: var(--ink-soft); }
+  .vacio .icono { font-size: 2rem; margin-bottom: 6px; }
+  .pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+  @media (max-width: 640px) {
+    .marca-portal img { width: 112px; }
+    header.top h1 { font-size: 1.3rem; }
+    .usuario-chip span { display: none; }
+    .limite { text-align: left; }
   }
-
-  th:nth-child(3),
-  td:nth-child(3) {
-    display:none;
-  }
-
-}
-
 </style>
-
 </head>
-
-
 <body>
-
-<header>
-
-  <div class="header-inner">
-
-    <h1>
-      Mercaldas · Portal de Proveedores
-    </h1>
-
-    <button
-      class="btn-secondary"
-      id="btnLogout"
-    >
-      Cerrar sesión
-    </button>
-
-  </div>
-
-</header>
-
-
-<main class="container">
-
-  <div id="mensaje"></div>
-
-
-  <section class="card">
-
-    <div
-      class="nombre-proveedor"
-      id="proveedorNombre"
-    >
-      Cargando...
-    </div>
-
-    <div class="suave">
-      Propuesta Comercial Fruver
-    </div>
-
-    <div
-      id="cicloBox"
-      class="ciclo"
-    >
-      Consultando ciclo activo...
-    </div>
-
-
-    <div class="toolbar">
-
-      <button
-        class="btn-secondary"
-        id="btnDescargarPlantilla"
-      >
-        Descargar plantilla Excel
-      </button>
-
-
-      <input
-        type="file"
-        id="inputExcel"
-        accept=".xlsx,.xls"
-        style="display:none"
-      >
-
-
-      <button
-        class="btn-primary"
-        id="btnSubirExcel"
-      >
-        Subir cotización Excel
-      </button>
-
-    </div>
-
-  </section>
-
-
-  <section class="card">
-
-    <div class="section-title">
-      Productos habituales
-    </div>
-
-    <p class="suave">
-      Haz clic sobre el PLU para registrar o modificar
-      la oferta comercial de este producto.
-    </p>
-
-    <div class="table-scroll">
-
-      <table>
-
-        <thead>
-          <tr>
-            <th>PLU</th>
-            <th>Producto</th>
-            <th>Presentación</th>
-            <th>Frecuencia</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-
-        <tbody id="habitualesBody"></tbody>
-
-      </table>
-
-    </div>
-
-  </section>
-
-
-  <section class="card temporada">
-
-    <div class="section-title">
-      Productos de temporada / adicionales
-    </div>
-
-    <p class="suave">
-      Aquí aparecen los productos adicionales que tienes
-      asociados. Haz clic en el PLU y selecciona si deseas
-      ofertarlo durante esta semana.
-    </p>
-
-    <div class="table-scroll">
-
-      <table>
-
-        <thead>
-          <tr>
-            <th>PLU</th>
-            <th>Producto</th>
-            <th>Presentación</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-
-        <tbody id="adicionalesBody"></tbody>
-
-      </table>
-
-    </div>
-
-  </section>
-
-
-</main>
-
-
-<!-- MODAL OFERTA -->
-
-<div
-  class="modal-overlay"
-  id="ofertaModal"
->
-
-  <div class="modal">
-
-    <div class="modal-header">
-
+<div class="wrap">
+  <header class="top">
+    <div class="marca-portal">
+      <img src="/marca/mercaldas-logo.png" alt="Mercaldas" width="150" height="38">
+      <div class="separador" aria-hidden="true"></div>
       <div>
-
-        <h2 id="modalTitulo">
-          Oferta comercial
-        </h2>
-
-        <div
-          class="suave"
-          id="modalProducto"
-        ></div>
-
+        <h1>Portal de proveedores</h1>
+        <p class="subtitle" id="nombreProveedor"></p>
       </div>
-
-      <button
-        class="btn-secondary"
-        id="btnCerrarModal"
-      >
-        ✕
-      </button>
-
     </div>
-
-
-    <div
-      class="field"
-      id="campoTemporada"
-      style="display:none"
-    >
-
-      <label>
-        Producto de temporada
-      </label>
-
-      <div class="check-line">
-
-        <input
-          type="checkbox"
-          id="modalOfertar"
-        >
-
-        <span>
-          Ofertar este producto esta semana
-        </span>
-
+    <div class="barra-usuario">
+      <button class="campana" id="btnAvisos" type="button" title="Avisos" aria-label="Avisos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="num" id="avisosNum">0</span>
+      </button>
+      <div class="menu-usuario">
+        <button type="button" class="usuario-boton" id="btnUsuario" aria-haspopup="true" aria-expanded="false" aria-controls="menuUsuario">
+          <span class="usuario-chip" id="usuarioChip"></span><span class="flecha" aria-hidden="true">▾</span>
+        </button>
+        <div class="menu-usuario-lista" id="menuUsuario" hidden>
+          <button type="button" id="btnCambiarPassword">Cambiar contraseña</button>
+          <button type="button" id="btnLogout">Cerrar sesión</button>
+        </div>
       </div>
-
     </div>
+  </header>
 
-
-    <div class="field">
-
-      <label>
-        Precio propuesta
-      </label>
-
-      <input
-        type="number"
-        id="modalPrecio"
-        min="1"
-        step="1"
-        placeholder="Ej: 4500"
-      >
-
-    </div>
-
-
-    <div class="field">
-
-      <label>
-        Disponibilidad
-      </label>
-
-      <select id="modalDisponibilidad">
-
-        <option value="">
-          Selecciona...
-        </option>
-
-        <option value="Disponible">
-          Disponible
-        </option>
-
-        <option value="Limitado">
-          Disponibilidad limitada
-        </option>
-
-        <option value="No disponible">
-          No disponible
-        </option>
-
-      </select>
-
-    </div>
-
-
-    <div class="field">
-
-      <label>
-        Observación
-      </label>
-
-      <textarea
-        id="modalObservacion"
-        placeholder="Información adicional de la oferta..."
-      ></textarea>
-
-    </div>
-
-
-    <div class="modal-actions">
-
-      <button
-        class="btn-secondary"
-        id="btnCancelarOferta"
-      >
-        Cancelar
-      </button>
-
-      <button
-        class="btn-primary"
-        id="btnGuardarOferta"
-      >
-        Guardar oferta
-      </button>
-
-    </div>
-
+  <div class="secciones" role="tablist">
+    <button type="button" class="activa" data-seccion="solicitudes">Solicitudes de cotización <span class="count" id="cuentaSolicitudes">0</span></button>
+    <button type="button" data-seccion="contrapropuestas">Contrapropuestas <span class="count" id="cuentaContra">0</span></button>
   </div>
 
+  <section id="secSolicitudes"><div class="card"><p class="texto-suave" style="margin:0">Cargando…</p></div></section>
+  <section id="secContrapropuestas" style="display:none"></section>
 </div>
-
+<div id="toast"></div>
 
 <script src="/entorno.js"></script>
+<script src="/sesion.js"></script>
 <script>
-
 (function () {
+  "use strict";
+  const C = window.Comun;
+  const { api, toast, esc, moneda, fecha } = C;
+  const DISPONIBILIDAD = ["Disponible", "Limitado", "No disponible"];
+  const ESTADOS = { abierta: ["Abierta", "ok"], vencida: ["Plazo vencido", "espera"], cerrada: ["Cerrada", "gris"] };
+  const P = { datos: null, seccion: "solicitudes" };
 
-  let portal = null;
-  let productoActual = null;
-  let ofertas = new Map();
+  const $ = (id) => document.getElementById(id);
+  const etiqueta = (e) => { const [t, c] = ESTADOS[e] || [e, "gris"]; return '<span class="etiqueta ' + c + '">' + t + "</span>"; };
+  const num = (n) => (n == null ? "—" : Number(n).toLocaleString("es-CO", { maximumFractionDigits: 2 }));
 
-
-  function esc(s) {
-
-    return String(s ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
-
+  function faltaPara(iso) {
+    const min = Math.round((new Date(iso) - Date.now()) / 60000);
+    if (min <= 0) return "";
+    if (min < 60) return "cierra en " + min + " min";
+    const h = Math.floor(min / 60);
+    return h < 48 ? "cierra en " + h + " h" : "cierra en " + Math.floor(h / 24) + " días";
   }
 
+  function irA(seccion) {
+    P.seccion = seccion;
+    document.querySelectorAll(".secciones button").forEach((b) => b.classList.toggle("activa", b.dataset.seccion === seccion));
+    $("secSolicitudes").style.display = seccion === "solicitudes" ? "" : "none";
+    $("secContrapropuestas").style.display = seccion === "contrapropuestas" ? "" : "none";
+  }
 
-  function mensaje(texto, tipo = "ok") {
+  async function cargar() {
+    P.datos = await api("/api/proveedor/inicio");
+    $("nombreProveedor").textContent = P.datos.proveedor;
+    pintarSolicitudes();
+    pintarContrapropuestas();
+  }
 
-    const box =
-      document.getElementById("mensaje");
+  // ---------- Solicitudes de cotización ----------
+  function pintarSolicitudes() {
+    const lista = P.datos.subastas;
+    const abiertas = lista.filter((s) => s.puede_ofertar).length;
+    $("cuentaSolicitudes").textContent = abiertas;
+    $("cuentaSolicitudes").classList.toggle("alerta", lista.some((s) => s.puede_ofertar && !s.respondido_en));
+    if (!lista.length) {
+      $("secSolicitudes").innerHTML = '<div class="card vacio"><div class="icono">📭</div><b>No tienes solicitudes de cotización abiertas.</b><p class="texto-suave">Cuando Mercaldas pida precio de tus productos, te llegará un aviso aquí y a tu correo.</p></div>';
+      return;
+    }
+    $("secSolicitudes").innerHTML = lista.map((s) => {
+      const editable = s.puede_ofertar;
+      const conPrecio = s.productos.filter((p) => p.oferta).length;
+      let estadoTexto = "";
+      if (s.negociacion_iniciada) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya está negociando tu propuesta de esta semana. Revisa la pestaña <a href="#" data-ir="contrapropuestas">Contrapropuestas</a>.</div>';
+      else if (s.respondido_en && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + ". Puedes ajustarla hasta el cierre.</div>";
+      else if (s.respondido_en) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + ".</div>";
+      else if (!editable) estadoTexto = '<div class="nota alerta" style="margin-bottom:12px">Esta solicitud ya no recibe propuestas.</div>';
+      const filas = s.productos.map((p) => {
+        const o = p.oferta || {};
+        const celdas = editable
+          ? '<td><input class="manual-input precio" type="number" min="1" step="1" inputmode="numeric" placeholder="$" data-campo="precio" data-codigo="' + esc(p.codigo) + '" value="' + esc(o.precio != null ? o.precio : "") + '" aria-label="Precio de ' + esc(p.producto) + '"></td>' +
+            '<td><select class="manual-input" data-campo="disponibilidad" data-codigo="' + esc(p.codigo) + '"><option value="">—</option>' +
+            DISPONIBILIDAD.map((d) => '<option value="' + d + '"' + (o.disponibilidad === d ? " selected" : "") + ">" + d + "</option>").join("") + "</select></td>" +
+            '<td><input class="manual-input obs" maxlength="300" data-campo="observacion" data-codigo="' + esc(p.codigo) + '" value="' + esc(o.observacion || "") + '" placeholder="Opcional"></td>'
+          : '<td class="celda-num">' + (p.oferta ? moneda(o.precio) : '<span class="texto-suave">Sin precio</span>') + "</td><td>" + esc(o.disponibilidad || "—") + "</td><td class='envuelve'>" + esc(o.observacion || "") + "</td>";
+        return "<tr><td>" + esc(p.codigo) + "</td><td class='envuelve'><b>" + esc(p.producto) + "</b>" + (p.observacion ? "<div class='texto-suave'>" + esc(p.observacion) + "</div>" : "") + "</td>" +
+          "<td>" + esc(p.presentacion) + "</td><td class='celda-num'>" + num(p.cantidad_estimada) + "</td>" + celdas + "</tr>";
+      }).join("");
+      return '<div class="card" data-subasta="' + s.id + '">' +
+        '<div class="cab-sub"><div><h3>' + esc(s.titulo) + " " + etiqueta(s.estado) + "</h3>" +
+        '<div class="texto-suave">Semana ' + esc(s.ciclo_id) + (s.vigencia ? " · precios para el " + esc(fecha(s.vigencia.desde + "T12:00:00Z", false)) + " al " + esc(fecha(s.vigencia.hasta + "T12:00:00Z", false)) : "") + "</div>" +
+        (s.observacion ? '<div class="texto-suave" style="margin-top:4px">Nota de Mercaldas: ' + esc(s.observacion) + "</div>" : "") + "</div>" +
+        '<div class="limite"><div class="texto-suave">Fecha límite</div><b>' + esc(fecha(s.fecha_limite)) + "</b>" + (editable ? '<div class="texto-suave">' + esc(faltaPara(s.fecha_limite)) + "</div>" : "") + "</div></div>" +
+        estadoTexto +
+        '<div class="table-scroll"><table><thead><tr><th>PLU</th><th>Producto</th><th>Presentación</th><th class="celda-num">Cant. estimada</th><th>Precio unitario</th><th>Disponibilidad</th><th>Observación</th></tr></thead><tbody>' + filas + "</tbody></table></div>" +
+        (editable
+          ? '<div class="pie"><span class="texto-suave">Escribe el precio en pesos por unidad de la presentación. Deja vacío lo que no vas a ofertar. <b data-cuenta>' + conPrecio + " de " + s.productos.length + "</b> con precio.</span>" +
+            '<button class="btn-primary" data-enviar="' + s.id + '">' + (s.respondido_en ? "Actualizar propuesta" : "Enviar propuesta") + "</button></div>"
+          : "") +
+        "</div>";
+    }).join("");
+  }
 
-    box.className = tipo;
-    box.textContent = texto;
-
-    window.scrollTo({
-      top:0,
-      behavior:"smooth"
+  async function enviarOferta(id, boton) {
+    const caja = document.querySelector('[data-subasta="' + id + '"]');
+    const items = {};
+    caja.querySelectorAll("[data-codigo]").forEach((el) => {
+      const c = el.dataset.codigo;
+      items[c] = items[c] || { codigo: c };
+      items[c][el.dataset.campo] = el.value.trim();
     });
-
-  }
-
-
-  async function cargarPortal() {
-
-    const res =
-      await fetch("/api/proveedor/portal");
-
-
-    if (res.status === 401) {
-
-      window.location.href =
-        "/login.html";
-
-      return;
-
-    }
-
-
-    const data = await res.json();
-
-
-    if (!res.ok) {
-
-      throw new Error(
-        data.error ||
-        "No se pudo cargar el portal."
-      );
-
-    }
-
-
-    portal = data;
-    ofertas = new Map();
-
-
-    [
-      ...portal.habituales,
-      ...portal.adicionales
-    ].forEach(p => {
-
-      if (p.propuesta) {
-
-        ofertas.set(
-          String(p.codigo),
-          {
-            codigo:String(p.codigo),
-            precio:p.propuesta.precio,
-            disponibilidad:
-              p.propuesta.disponibilidad || "",
-            observacion:
-              p.propuesta.observacion || ""
-          }
-        );
-
-      }
-
-    });
-
-
-    document
-      .getElementById("proveedorNombre")
-      .textContent =
-        portal.proveedor;
-
-
-    renderCiclo();
-    renderProductos();
-
-  }
-
-
-  function renderCiclo() {
-
-    const box =
-      document.getElementById("cicloBox");
-
-    const btnExcel =
-      document.getElementById("btnSubirExcel");
-
-    const btnPlantilla =
-      document.getElementById("btnDescargarPlantilla");
-
-
-    if (!portal.ciclo) {
-
-      box.innerHTML =
-        "<strong>No hay ciclo activo.</strong><br>" +
-        "Mercaldas debe programar la semana " +
-        "antes de recibir propuestas.";
-
-      btnExcel.disabled = true;
-      btnPlantilla.disabled = true;
-
-      return;
-
-    }
-
-
-    box.innerHTML =
-
-      "<strong>Ciclo activo: " +
-      esc(portal.ciclo.id) +
-      "</strong><br>" +
-
-      "Recepción de propuestas: " +
-      esc(portal.ciclo.fecha_inicio_recepcion) +
-      " al " +
-      esc(portal.ciclo.fecha_fin_recepcion) +
-      "<br>" +
-
-      "Vigencia comercial: " +
-      esc(portal.ciclo.fecha_inicio_vigencia) +
-      " al " +
-      esc(portal.ciclo.fecha_fin_vigencia);
-
-
-    btnExcel.disabled =
-      !portal.puedeCotizar;
-
-    btnPlantilla.disabled = false;
-
-  }
-
-
-  function estadoProducto(p) {
-
-    return ofertas.has(String(p.codigo))
-      ? '<span class="estado cotizado">Cotizado</span>'
-      : '<span class="estado">Pendiente</span>';
-
-  }
-
-
-  function fila(p, adicional) {
-
-    return `
-
-      <tr>
-
-        <td>
-
-          <button
-            class="plu-link"
-            data-plu="${esc(p.codigo)}"
-          >
-            ${esc(p.codigo)}
-          </button>
-
-        </td>
-
-        <td>
-          ${esc(p.producto)}
-        </td>
-
-        <td>
-          ${esc(p.presentacion)}
-        </td>
-
-        ${adicional
-          ? ""
-          : "<td>" +
-              esc(p.frecuencia) +
-            "</td>"
-        }
-
-        <td>
-          ${estadoProducto(p)}
-        </td>
-
-      </tr>
-
-    `;
-
-  }
-
-
-  function renderProductos() {
-
-    const hb =
-      document.getElementById(
-        "habitualesBody"
-      );
-
-    const ab =
-      document.getElementById(
-        "adicionalesBody"
-      );
-
-
-    hb.innerHTML =
-      portal.habituales.length
-
-      ? portal.habituales
-          .map(p => fila(p, false))
-          .join("")
-
-      : '<tr><td colspan="5" class="empty">' +
-        'No tienes productos habituales asociados.' +
-        '</td></tr>';
-
-
-    ab.innerHTML =
-      portal.adicionales.length
-
-      ? portal.adicionales
-          .map(p => fila(p, true))
-          .join("")
-
-      : '<tr><td colspan="4" class="empty">' +
-        'Actualmente no tienes productos de temporada asociados.' +
-        '</td></tr>';
-
-  }
-
-
-  function buscarProducto(codigo) {
-
-    return [
-      ...portal.habituales,
-      ...portal.adicionales
-    ].find(
-      p => String(p.codigo) === String(codigo)
-    );
-
-  }
-
-
-  function abrirModal(codigo) {
-
-    if (!portal.ciclo) {
-
-      mensaje(
-        "Mercaldas todavía no ha programado una semana de cotización.",
-        "error"
-      );
-
-      return;
-
-    }
-
-
-    productoActual =
-      buscarProducto(codigo);
-
-
-    if (!productoActual)
-      return;
-
-
-    const oferta =
-      ofertas.get(String(codigo));
-
-
-    document
-      .getElementById("modalTitulo")
-      .textContent =
-        "PLU " + productoActual.codigo;
-
-
-    document
-      .getElementById("modalProducto")
-      .textContent =
-        productoActual.producto +
-        " · " +
-        productoActual.presentacion;
-
-
-    document
-      .getElementById("modalPrecio")
-      .value =
-        oferta
-          ? oferta.precio
-          : "";
-
-
-    document
-      .getElementById(
-        "modalDisponibilidad"
-      )
-      .value =
-        oferta
-          ? oferta.disponibilidad
-          : "";
-
-
-    document
-      .getElementById(
-        "modalObservacion"
-      )
-      .value =
-        oferta
-          ? oferta.observacion
-          : "";
-
-
-    const esAdicional =
-      productoActual.tipo !== "habitual";
-
-
-    document
-      .getElementById(
-        "campoTemporada"
-      )
-      .style.display =
-        esAdicional
-          ? "block"
-          : "none";
-
-
-    document
-      .getElementById(
-        "modalOfertar"
-      )
-      .checked =
-        esAdicional
-          ? !!oferta
-          : true;
-
-
-    document
-      .getElementById(
-        "ofertaModal"
-      )
-      .style.display =
-        "flex";
-
-  }
-
-
-  function cerrarModal() {
-
-    document
-      .getElementById(
-        "ofertaModal"
-      )
-      .style.display =
-        "none";
-
-    productoActual = null;
-
-  }
-
-
-  async function guardarOferta() {
-
-    if (!productoActual)
-      return;
-
-
-    const esAdicional =
-      productoActual.tipo !== "habitual";
-
-
-    const ofertar =
-      document
-        .getElementById("modalOfertar")
-        .checked;
-
-
-    const codigo =
-      String(productoActual.codigo);
-
-
-    if (
-      esAdicional &&
-      !ofertar
-    ) {
-
-      ofertas.delete(codigo);
-
-    } else {
-
-      const precio =
-        Number(
-          document
-            .getElementById("modalPrecio")
-            .value
-        );
-
-
-      if (
-        !Number.isFinite(precio) ||
-        precio <= 0
-      ) {
-
-        alert(
-          "Ingresa un precio válido."
-        );
-
-        return;
-
-      }
-
-
-      ofertas.set(
-        codigo,
-        {
-          codigo,
-          precio,
-          disponibilidad:
-            document
-              .getElementById(
-                "modalDisponibilidad"
-              )
-              .value,
-
-          observacion:
-            document
-              .getElementById(
-                "modalObservacion"
-              )
-              .value
-              .trim()
-        }
-      );
-
-    }
-
-
-    const items =
-      Array.from(
-        ofertas.values()
-      );
-
-
-    if (!items.length) {
-
-      cerrarModal();
-      renderProductos();
-
-      return;
-
-    }
-
-
-    const btn =
-      document.getElementById(
-        "btnGuardarOferta"
-      );
-
-
-    btn.disabled = true;
-    btn.textContent = "Guardando...";
-
-
+    const lista = Object.values(items);
+    const conPrecio = lista.filter((x) => x.precio !== "");
+    const malos = conPrecio.filter((x) => !/^\d+$/.test(x.precio) || Number(x.precio) <= 0);
+    if (malos.length) { toast("Revisa los precios: escribe solo números enteros en pesos, sin puntos ni signos."); return; }
+    if (!conPrecio.length && !confirm("No escribiste ningún precio. ¿Quieres retirar tu propuesta de esta solicitud?")) return;
+    if (conPrecio.length && !confirm("Vas a enviar precio de " + conPrecio.length + " producto(s). Puedes ajustarlo hasta el cierre. ¿Enviar?")) return;
+    boton.disabled = true;
     try {
-
-      const res =
-        await fetch(
-          "/api/proveedor/propuesta",
-          {
-            method:"POST",
-
-            headers:{
-              "Content-Type":
-                "application/json"
-            },
-
-            body:JSON.stringify({
-              items
-            })
-          }
-        );
-
-
-      const data =
-        await res.json();
-
-
-      if (!res.ok) {
-
-        throw new Error(
-          data.error ||
-          "No se pudo guardar la oferta."
-        );
-
-      }
-
-
-      cerrarModal();
-
-      mensaje(
-        "Oferta guardada correctamente.",
-        "ok"
-      );
-
-
-      await cargarPortal();
-
-
+      const r = await api("/api/proveedor/subastas/" + id + "/oferta", { method: "POST", json: { items: lista.map((x) => ({ ...x, precio: x.precio === "" ? null : Number(x.precio) })) } });
+      toast(r.ofertados ? "Propuesta enviada: " + r.ofertados + " producto(s) con precio." : "Propuesta retirada.");
+      await cargar();
     } catch (err) {
-
-      alert(err.message);
-
-    } finally {
-
-      btn.disabled = false;
-      btn.textContent =
-        "Guardar oferta";
-
+      toast(err.message);
+      boton.disabled = false;
     }
-
   }
 
-
-  document
-    .addEventListener(
-      "click",
-      e => {
-
-        const plu =
-          e.target.closest(
-            "[data-plu]"
-          );
-
-        if (plu) {
-
-          abrirModal(
-            plu.dataset.plu
-          );
-
-        }
-
+  // ---------- Contrapropuestas ----------
+  function pintarContrapropuestas() {
+    const lista = P.datos.negociaciones;
+    const pendientes = lista.reduce((a, n) => a + n.pendientes.length, 0);
+    $("cuentaContra").textContent = pendientes;
+    $("cuentaContra").classList.toggle("alerta", pendientes > 0);
+    if (!lista.length) {
+      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Después de recibir tu propuesta, Mercaldas puede enviarte una contrapropuesta. Te llegará un aviso aquí y a tu correo.</p></div>';
+      return;
+    }
+    $("secContrapropuestas").innerHTML = lista.map((n) => {
+      let html = '<div class="card" data-neg="' + n.id + '"><div class="cab-sub"><div><h3>Semana ' + esc(n.ciclo_id) + "</h3>" +
+        (n.publicado_en ? '<div class="texto-suave">Contrapropuesta recibida el ' + esc(fecha(n.publicado_en)) + "</div>" : "") + "</div></div>";
+      if (n.pendientes.length) {
+        html += '<div class="nota alerta" style="margin-bottom:12px">Responde cada producto. <b>Tu respuesta queda como precio final acordado</b>: si aceptas, se toma la contrapropuesta; si propones otro precio, debe estar entre la contrapropuesta y tu precio.</div>' +
+          '<div class="table-scroll"><table><thead><tr><th>Producto</th><th class="celda-num">Tu precio</th><th class="celda-num">Contrapropuesta Mercaldas</th><th>Tu respuesta</th></tr></thead><tbody>' +
+          n.pendientes.map((p) => {
+            const nombre = "r_" + n.id + "_" + p.codigo;
+            return "<tr><td class='envuelve'><b>" + esc(p.producto) + "</b><div class='texto-suave'>PLU " + esc(p.codigo) + (p.presentacion ? " · " + esc(p.presentacion) : "") + "</div></td>" +
+              "<td class='celda-num'>" + moneda(p.tu_precio) + "</td><td class='celda-num'><b>" + moneda(p.contrapropuesta) + "</b></td>" +
+              "<td><div class='respuesta' data-codigo='" + esc(p.codigo) + "'>" +
+              "<label><input type='radio' name='" + esc(nombre) + "' value='aceptar'> Acepto " + moneda(p.contrapropuesta) + "</label>" +
+              (p.tu_precio != null ? "<label><input type='radio' name='" + esc(nombre) + "' value='mantener'> Mantengo mi precio " + moneda(p.tu_precio) + "</label>" : "") +
+              "<label><input type='radio' name='" + esc(nombre) + "' value='contraproponer'> Propongo <input class='manual-input' type='number' min='1' step='1' inputmode='numeric' placeholder='$' data-propuesta></label>" +
+              "</div></td></tr>";
+          }).join("") + "</tbody></table></div>" +
+          '<div class="pie"><button class="btn-secondary" data-aceptar-todo="' + n.id + '">Aceptar todas</button><button class="btn-primary" data-responder="' + n.id + '">Enviar respuesta</button></div>';
+      } else if (n.en_revision) {
+        html += '<div class="nota">Mercaldas está revisando tu propuesta (' + n.en_revision + " producto(s)). Te avisaremos cuando te envíe la contrapropuesta.</div>";
       }
-    );
-
-
-  document
-    .getElementById(
-      "btnCerrarModal"
-    )
-    .addEventListener(
-      "click",
-      cerrarModal
-    );
-
-
-  document
-    .getElementById(
-      "btnCancelarOferta"
-    )
-    .addEventListener(
-      "click",
-      cerrarModal
-    );
-
-
-  document
-    .getElementById(
-      "ofertaModal"
-    )
-    .addEventListener(
-      "click",
-      e => {
-
-        if (
-          e.target.id ===
-          "ofertaModal"
-        ) {
-
-          cerrarModal();
-
-        }
-
+      if (n.cerrados.length) {
+        html += '<p class="section-title" style="margin:18px 0 10px;font-size:0.95rem">Precios acordados</p><div class="table-scroll"><table><thead><tr><th>Producto</th><th class="celda-num">Cotizaste</th><th class="celda-num">Precio final</th><th>Estado</th></tr></thead><tbody>' +
+          n.cerrados.map((p) => "<tr><td class='envuelve'>" + esc(p.producto) + "<div class='texto-suave'>PLU " + esc(p.codigo) + "</div></td><td class='celda-num'>" + moneda(p.cotizaste) + "</td>" +
+            "<td class='celda-num'><b>" + (p.estado === "acuerdo" ? moneda(p.precio_final) : "—") + "</b></td><td>" + (p.estado === "acuerdo" ? '<span class="etiqueta ok">Acordado</span>' : '<span class="etiqueta mal">Sin acuerdo</span>') + "</td></tr>").join("") +
+          "</tbody></table></div>";
       }
-    );
+      return html + "</div>";
+    }).join("");
+  }
 
+  async function responder(id, boton) {
+    const caja = document.querySelector('[data-neg="' + id + '"]');
+    const respuestas = [], faltan = [];
+    caja.querySelectorAll(".respuesta").forEach((r) => {
+      const elegido = r.querySelector("input[type=radio]:checked");
+      if (!elegido) { faltan.push(r.dataset.codigo); return; }
+      const fila = { codigo: r.dataset.codigo, accion: elegido.value };
+      if (elegido.value === "contraproponer") fila.precio = Number(r.querySelector("[data-propuesta]").value);
+      respuestas.push(fila);
+    });
+    if (!respuestas.length) { toast("Elige una respuesta en al menos un producto."); return; }
+    const malos = respuestas.filter((x) => x.accion === "contraproponer" && !(Number.isInteger(x.precio) && x.precio > 0));
+    if (malos.length) { toast("Escribe el precio que propones (número entero en pesos)."); return; }
+    const texto = "Vas a responder " + respuestas.length + " producto(s)" + (faltan.length ? " (quedan " + faltan.length + " sin responder)" : "") +
+      ".\nTu respuesta queda como precio final acordado y no se puede cambiar desde el portal.\n\n¿Enviar?";
+    if (!confirm(texto)) return;
+    boton.disabled = true;
+    try {
+      const r = await api("/api/proveedor/negociaciones/" + id + "/responder", { method: "POST", json: { respuestas } });
+      toast("Respuesta enviada: " + r.guardadas + " producto(s) con precio final.");
+      await cargar();
+    } catch (err) {
+      toast(err.message);
+      boton.disabled = false;
+    }
+  }
 
-  document
-    .getElementById(
-      "btnGuardarOferta"
-    )
-    .addEventListener(
-      "click",
-      guardarOferta
-    );
+  // ---------- Eventos ----------
+  document.addEventListener("click", (e) => {
+    const sec = e.target.closest("[data-seccion]");
+    if (sec) { irA(sec.dataset.seccion); return; }
+    const ir = e.target.closest("[data-ir]");
+    if (ir) { e.preventDefault(); irA(ir.dataset.ir); return; }
+    const env = e.target.closest("[data-enviar]");
+    if (env) { enviarOferta(env.dataset.enviar, env); return; }
+    const resp = e.target.closest("[data-responder]");
+    if (resp) { responder(resp.dataset.responder, resp); return; }
+    const todo = e.target.closest("[data-aceptar-todo]");
+    if (todo) {
+      document.querySelectorAll('[data-neg="' + todo.dataset.aceptarTodo + '"] input[value=aceptar]').forEach((r) => { r.checked = true; });
+      return;
+    }
+  });
+  // Al escribir un precio propuesto se marca sola la opción «Propongo»; al escribir precios se actualiza el conteo
+  document.addEventListener("input", (e) => {
+    if (e.target.matches("[data-propuesta]")) {
+      const radio = e.target.closest("label").querySelector("input[type=radio]");
+      if (radio && e.target.value) radio.checked = true;
+    }
+    if (e.target.matches("[data-campo=precio]")) {
+      const caja = e.target.closest("[data-subasta]");
+      const n = [...caja.querySelectorAll("[data-campo=precio]")].filter((x) => x.value.trim() !== "").length;
+      const total = caja.querySelectorAll("[data-campo=precio]").length;
+      const cuenta = caja.querySelector("[data-cuenta]");
+      if (cuenta) cuenta.textContent = n + " de " + total;
+    }
+  });
+  document.addEventListener("aviso:abrir", (e) => {
+    if (e.detail === "contrapropuestas") irA("contrapropuestas");
+    else if (e.detail === "subastas") irA("solicitudes");
+    cargar().catch((err) => toast(err.message));
+  });
+  document.addEventListener("avisos:nuevos", () => cargar().catch(() => {}));
+  $("btnLogout").addEventListener("click", async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = "/login.html";
+  });
 
-
-  document
-    .getElementById(
-      "btnDescargarPlantilla"
-    )
-    .addEventListener(
-      "click",
-      () => {
-
-        window.location.href =
-          "/api/proveedor/plantilla-cotizacion";
-
-      }
-    );
-
-
-  document
-    .getElementById(
-      "btnSubirExcel"
-    )
-    .addEventListener(
-      "click",
-      () => {
-
-        document
-          .getElementById(
-            "inputExcel"
-          )
-          .click();
-
-      }
-    );
-
-
-  document
-    .getElementById(
-      "inputExcel"
-    )
-    .addEventListener(
-      "change",
-      async e => {
-
-        const file =
-          e.target.files[0];
-
-        if (!file)
-          return;
-
-
-        const form =
-          new FormData();
-
-        form.append(
-          "archivo",
-          file
-        );
-
-
-        try {
-
-          mensaje(
-            "Procesando archivo Excel...",
-            "ok"
-          );
-
-
-          const res =
-            await fetch(
-              "/api/proveedor/importar-cotizacion",
-              {
-                method:"POST",
-                body:form
-              }
-            );
-
-
-          const data =
-            await res.json();
-
-
-          if (!res.ok) {
-
-            let detalle =
-              data.error ||
-              "No se pudo importar.";
-
-            if (
-              Array.isArray(
-                data.errores
-              )
-            ) {
-
-              detalle +=
-                "\n\n" +
-                data.errores.join("\n");
-
-            }
-
-            throw new Error(
-              detalle
-            );
-
-          }
-
-
-          mensaje(
-            "Excel cargado correctamente. " +
-            data.actualizados +
-            " productos actualizados.",
-            "ok"
-          );
-
-
-          await cargarPortal();
-
-
-        } catch (err) {
-
-          alert(err.message);
-
-          mensaje(
-            "El archivo no pudo ser cargado.",
-            "error"
-          );
-
-        } finally {
-
-          e.target.value = "";
-
-        }
-
-      }
-    );
-
-
-  document
-    .getElementById(
-      "btnLogout"
-    )
-    .addEventListener(
-      "click",
-      async () => {
-
-        await fetch(
-          "/api/auth/logout",
-          {
-            method:"POST"
-          }
-        );
-
-        window.location.href =
-          "/login.html";
-
-      }
-    );
-
-
-  cargarPortal()
-    .catch(
-      err => mensaje(
-        err.message,
-        "error"
-      )
-    );
-
+  cargar().then(() => {
+    // Si hay contrapropuestas por responder y ninguna solicitud abierta pendiente, se abre esa sección primero
+    const d = P.datos;
+    if (d.negociaciones.some((n) => n.pendientes.length) && !d.subastas.some((s) => s.puede_ofertar && !s.respondido_en)) irA("contrapropuestas");
+  }).catch((err) => {
+    $("secSolicitudes").innerHTML = '<div class="card"><div class="nota error">' + esc(err.message) + "</div></div>";
+  });
 })();
-
 </script>
-
-
 </body>
 </html>

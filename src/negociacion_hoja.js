@@ -2,6 +2,8 @@
 const ExcelJS = require("exceljs");
 const multer = require("multer");
 const db = require("./db");
+const correo = require("./correo");
+const notificaciones = require("./notificaciones");
 const { leerRespuesta, validar, alertasContrapropuesta } = require("./negociacion_lector");
 
 // Numeración del historial (la misma que ya usa "iniciar"): 1 = cotización del proveedor,
@@ -35,6 +37,24 @@ function esquemaFaltante() {
 
 function negociacionPorId(id) {
   return db.prepare("SELECT * FROM negociaciones_unificadas WHERE id = ?").get(Number(id));
+}
+
+// Contrapropuestas enviadas al portal del proveedor: el proveedor solo ve las rondas que Mercaldas ya envió
+db.exec(`
+  CREATE TABLE IF NOT EXISTS negociacion_publicaciones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    negociacion_id INTEGER NOT NULL,
+    ronda_evento INTEGER NOT NULL,
+    productos INTEGER NOT NULL DEFAULT 0,
+    publicado_en TEXT NOT NULL,
+    publicado_por TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_negociacion_publicaciones ON negociacion_publicaciones(negociacion_id);
+`);
+
+function rondaPublicada(negId) {
+  const f = db.prepare("SELECT MAX(ronda_evento) AS ronda, MAX(publicado_en) AS publicado_en FROM negociacion_publicaciones WHERE negociacion_id = ?").get(negId);
+  return f && f.ronda != null ? f : null;
 }
 
 function insertarHistorial(negId, codigo, ronda, origen, precio, estado, observacion) {
@@ -91,8 +111,17 @@ function armarHoja(neg) {
   const cuenta = (f) => filas.filter(f).length;
   const conAhorro = filas.filter((f) => f.ahorroExacto != null);
   const maxRonda = filas.reduce((m, f) => Math.max(m, f.ultimaRonda), 1);
+  const esperando = filas.filter((f) => f.estado === "abierto" && f.turno === "proveedor");
+  const rondaPendiente = esperando.length ? Math.max(...esperando.map((f) => f.ultimaRonda)) : null;
+  const pub = rondaPublicada(neg.id);
+  const portal = {
+    ronda_pendiente: rondaPendiente,
+    publicado: !!(rondaPendiente && pub && pub.ronda >= rondaPendiente),
+    publicado_en: pub ? pub.publicado_en : null,
+    por_responder: pub ? esperando.filter((f) => f.ultimaRonda <= pub.ronda).length : 0,
+  };
   return {
-    negociacion: { id: neg.id, ciclo: neg.ciclo_id, proveedor: neg.proveedor, estado: neg.estado, ronda_visible: Math.max(1, Math.floor(maxRonda / 2)), max_rondas: MAX_RONDAS },
+    negociacion: { id: neg.id, ciclo: neg.ciclo_id, proveedor: neg.proveedor, estado: neg.estado, ronda_visible: Math.max(1, Math.floor(maxRonda / 2)), max_rondas: MAX_RONDAS, portal },
     resumen: {
       total: filas.length,
       acuerdo: cuenta((f) => f.estado === "acuerdo"),
@@ -146,6 +175,22 @@ async function prepararImportacion(neg, buffer) {
 }
 
 const TEXTO_TIPO = { acepta: "Acepta la contrapropuesta", mantiene: "Mantiene su precio", contrapropone: "Contrapropone un precio intermedio", revisar: "Revisar" };
+
+// La respuesta del proveedor (por Excel o por el portal) queda como precio final acordado, igual que siempre.
+// respuestas: [{ codigo, ronda, respuesta, acepta, observacion }]
+function aplicarRespuestas(neg, respuestas, origen) {
+  let guardadas = 0;
+  db.transaction(() => {
+    for (const r of respuestas) {
+      insertarHistorial(neg.id, r.codigo, r.ronda, "PROVEEDOR", r.respuesta, r.acepta ? "acepta_contrapropuesta" : "respuesta_proveedor", r.observacion);
+      actualizarProducto(neg.id, r.codigo, { propuesta_final_proveedor: r.respuesta, precio_final: r.respuesta, estado: "acuerdo" }); /*precio-final-desde-archivo*/
+      if (!r.acepta) insertarHistorial(neg.id, r.codigo, r.ronda, "MERCALDAS", r.respuesta, "acuerdo_manual", origen);
+      guardadas++;
+    }
+    sincronizarCabecera(neg.id);
+  })();
+  return guardadas;
+}
 
 // ---------- Excel de la siguiente ronda (mismo aspecto que el de Por proveedor) ----------
 async function generarExcel(neg, k, filas) {
@@ -234,7 +279,9 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
     db.prepare("SELECT * FROM negociaciones_unificadas WHERE ciclo_id = ?").all(ciclo).forEach((n) => {
       const h = armarHoja(n);
       const previo = mapa.get(n.proveedor) || { proveedor: n.proveedor, cotizaciones: 0 };
-      mapa.set(n.proveedor, { ...previo, negociacion_id: n.id, estado: n.estado, ronda_visible: h.negociacion.ronda_visible, ...h.resumen });
+      const portal = h.negociacion.portal;
+      mapa.set(n.proveedor, { ...previo, negociacion_id: n.id, estado: n.estado, ronda_visible: h.negociacion.ronda_visible, ...h.resumen,
+        por_enviar_portal: portal.ronda_pendiente != null && !portal.publicado });
     });
     const prioridad = (x) => (x.negociacion_id == null ? 2 : x.estado === "cerrada" ? 3 : x.tu_turno > 0 ? 0 : 1);
     const lista = [...mapa.values()].sort((a, b) => prioridad(a) - prioridad(b) || a.proveedor.localeCompare(b.proveedor, "es"));
@@ -261,19 +308,13 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
       if (!prep.vista.puedeGuardar) return res.status(400).json({ error: "El archivo tiene errores que impiden guardarlo.", ronda: prep.pend.k, ...prep.vista });
 
       const rondaNueva = prep.pend.rondaEvento + 1;
-      let guardadas = 0;
-      db.transaction(() => {
-        for (const f of prep.vista.filas) {
-          if (f.tipo === "sin_respuesta" || f.respuesta == null) continue;
-          const acepta = f.tipo === "acepta";
-          const obs = f.tipo === "revisar" ? "Revisar: " + f.motivo : TEXTO_TIPO[f.tipo];
-          insertarHistorial(neg.id, f.plu, rondaNueva, "PROVEEDOR", f.respuesta, acepta ? "acepta_contrapropuesta" : "respuesta_proveedor", obs);
-          actualizarProducto(neg.id, f.plu, { propuesta_final_proveedor: f.respuesta, precio_final: f.respuesta, estado: "acuerdo" }); /*precio-final-desde-archivo*/
-          if (!acepta) insertarHistorial(neg.id, f.plu, rondaNueva, "MERCALDAS", f.respuesta, "acuerdo_manual", "Precio final tomado del archivo Excel");
-          guardadas++;
-        }
-        sincronizarCabecera(neg.id);
-      })();
+      const respuestas = prep.vista.filas
+        .filter((f) => f.tipo !== "sin_respuesta" && f.respuesta != null)
+        .map((f) => ({
+          codigo: f.plu, ronda: rondaNueva, respuesta: f.respuesta, acepta: f.tipo === "acepta",
+          observacion: f.tipo === "revisar" ? "Revisar: " + f.motivo : TEXTO_TIPO[f.tipo],
+        }));
+      const guardadas = aplicarRespuestas(neg, respuestas, "Precio final tomado del archivo Excel");
       res.json({ confirmado: true, guardadas, ronda: prep.pend.k, resumen: prep.vista.resumen, hoja: armarHoja(negociacionPorId(neg.id)) });
     } catch (e) {
       console.error("[negociacion_hoja] importar:", e);
@@ -371,6 +412,40 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
     }
   });
 
+  // Envía al portal del proveedor las contrapropuestas que esperan su respuesta (reemplaza mandarle el Excel)
+  app.post("/api/negociacion/:id/enviar-portal", requireAdmin, (req, res) => {
+    try {
+      const neg = negociacionPorId(req.params.id);
+      if (!neg) return res.status(404).json({ error: "No existe esa negociación." });
+      const hoja = armarHoja(neg);
+      const pend = pendientesDeProveedor(hoja);
+      if (!pend) return res.status(400).json({ error: "No hay contrapropuestas esperando respuesta del proveedor." });
+      const esperando = hoja.productos.filter((p) => p.estado === "abierto" && p.turno === "proveedor");
+      db.prepare("INSERT INTO negociacion_publicaciones (negociacion_id, ronda_evento, productos, publicado_en, publicado_por) VALUES (?, ?, ?, ?, ?)")
+        .run(neg.id, pend.rondaEvento, esperando.length, new Date().toISOString(), req.usuarioActual ? req.usuarioActual.usuario : null);
+
+      const usuarios = notificaciones.paraProveedor(neg.proveedor, {
+        tipo: "contrapropuesta",
+        titulo: "Mercaldas te envió una contrapropuesta (" + esperando.length + " producto" + (esperando.length === 1 ? "" : "s") + ")",
+        mensaje: "Semana " + neg.ciclo_id + ". Acepta, mantén tu precio o propón uno intermedio desde el portal.",
+        enlace: "contrapropuestas",
+      });
+      const correos = usuarios.map((u) => u.email).filter(Boolean);
+      correo.enviar({
+        para: correos,
+        asunto: "Contrapropuesta de Mercaldas · " + neg.ciclo_id,
+        titulo: "Tienes una contrapropuesta de Mercaldas",
+        parrafos: ["Hola, " + neg.proveedor + ".", "Mercaldas revisó tu propuesta de la semana " + neg.ciclo_id + " y te envió una contrapropuesta en " + esperando.length + " producto(s).",
+          "Entra al portal para responder: puedes aceptarla, mantener tu precio o proponer uno intermedio. Tu respuesta queda como precio final acordado."],
+        boton: { texto: "Responder en el portal", url: correo.urlApp("/login.html") },
+      });
+      res.json({ ok: true, productos: esperando.length, usuarios: usuarios.length, correos: correos.length, hoja: armarHoja(negociacionPorId(neg.id)) });
+    } catch (e) {
+      console.error("[negociacion_hoja] enviar-portal:", e);
+      res.status(500).json({ error: "No se pudo enviar la contrapropuesta al portal." });
+    }
+  });
+
   app.get("/api/negociacion/:id/exportar", requireAdmin, async (req, res) => {
     try {
       const neg = negociacionPorId(req.params.id);
@@ -392,3 +467,6 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
 
   console.log("Hoja de negociación lista (/api/negociacion/...)");
 };
+
+// Para el portal del proveedor
+Object.assign(module.exports, { armarHoja, negociacionPorId, aplicarRespuestas, rondaPublicada, esquemaFaltante });

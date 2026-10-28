@@ -315,7 +315,9 @@ function rutaLogo() {
     const p = path.join(__dirname, "..", "public", "assets", "logo-mercaldas." + ext);
     if (fs.existsSync(p)) return p;
   }
-  return null;
+  // Sin logo subido en Configuración se usa el ícono de Mercaldas (cuadrado, como el espacio del encabezado)
+  const icono = path.join(__dirname, "..", "public", "marca", "mercaldas-icono.png");
+  return fs.existsSync(icono) ? icono : null;
 }
 
 async function enviarPdfOrdenCompra(orden, items, res) {
@@ -331,15 +333,16 @@ async function enviarPdfOrdenCompra(orden, items, res) {
 }
 
 // ---------- Registro de rutas (llamado una sola vez desde server.js) ----------
-module.exports = function registrarRutasOrdenesCompra(app, requireAdmin) {
-  app.get("/api/ordenes-compra/pendientes", requireAdmin, (req, res) => {
+// requireCompras deja pasar a quien genera órdenes (admin y Planeación); la numeración y los indicadores son solo del admin
+module.exports = function registrarRutasOrdenesCompra(app, requireAdmin, requireCompras = requireAdmin) {
+  app.get("/api/ordenes-compra/pendientes", requireCompras, (req, res) => {
     const ciclo = String(req.query.ciclo_id || "").trim();
     const periodo = String(req.query.periodo || "LUNES-MARTES").trim().toUpperCase();
     if (!ciclo) return res.status(400).json({ error: "Falta seleccionar el ciclo." });
     res.json(getPendientesPorProveedor(ciclo, periodo));
   });
 
-  app.post("/api/ordenes-compra/generar", requireAdmin, (req, res) => {
+  app.post("/api/ordenes-compra/generar", requireCompras, (req, res) => {
     try {
       const ciclo = String(req.body.ciclo_id || "").trim();
       const periodo = String(req.body.periodo || "LUNES-MARTES").trim().toUpperCase();
@@ -354,11 +357,11 @@ module.exports = function registrarRutasOrdenesCompra(app, requireAdmin) {
     }
   });
 
-  app.get("/api/ordenes-compra", requireAdmin, (req, res) => {
+  app.get("/api/ordenes-compra", requireCompras, (req, res) => {
     res.json(listarOrdenesCompra());
   });
 
-  app.get("/api/ordenes-compra/:id/excel", requireAdmin, async (req, res) => {
+  app.get("/api/ordenes-compra/:id/excel", requireCompras, async (req, res) => {
     try {
       const data = getOrdenCompraPorId(req.params.id);
       if (!data) return res.status(404).json({ error: "Orden de compra no encontrada." });
@@ -370,14 +373,14 @@ module.exports = function registrarRutasOrdenesCompra(app, requireAdmin) {
   });
 
   // ---- Orden de compra con precio final negociado, PDF y numeración ----
-  app.get("/api/ordenes-compra/resumen", requireAdmin, (req, res) => {
+  app.get("/api/ordenes-compra/resumen", requireCompras, (req, res) => {
     const ciclo = String(req.query.ciclo_id || "").trim();
     const periodo = String(req.query.periodo || "LUNES-MARTES").trim().toUpperCase();
     if (!ciclo) return res.status(400).json({ error: "Falta seleccionar el ciclo." });
     res.json(resumenProveedores(ciclo, periodo));
   });
 
-  app.get("/api/ordenes-compra/preliminar", requireAdmin, (req, res) => {
+  app.get("/api/ordenes-compra/preliminar", requireCompras, (req, res) => {
     const ciclo = String(req.query.ciclo_id || "").trim();
     const periodo = String(req.query.periodo || "LUNES-MARTES").trim().toUpperCase();
     const proveedor = String(req.query.proveedor || "").trim();
@@ -385,7 +388,7 @@ module.exports = function registrarRutasOrdenesCompra(app, requireAdmin) {
     res.json(vistaPreviaProveedor(ciclo, periodo, proveedor));
   });
 
-  app.get("/api/ordenes-compra/config", requireAdmin, (req, res) => {
+  app.get("/api/ordenes-compra/config", requireCompras, (req, res) => {
     res.json(configNumeracion());
   });
 
@@ -398,7 +401,7 @@ module.exports = function registrarRutasOrdenesCompra(app, requireAdmin) {
     res.json(configNumeracion());
   });
 
-  app.get("/api/ordenes-compra/:id/pdf", requireAdmin, async (req, res) => {
+  app.get("/api/ordenes-compra/:id/pdf", requireCompras, async (req, res) => {
     try {
       const data = getOrdenCompraPorId(req.params.id);
       if (!data) return res.status(404).json({ error: "Orden de compra no encontrada." });

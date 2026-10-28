@@ -1,6 +1,10 @@
 (function () {
   "use strict";
 
+  // El servidor deja aquí quién inició sesión (ver auth.js). Planeación de la demanda solo usa Pedidos y Órdenes de compra.
+  const USUARIO = window.__USUARIO || {};
+  const ES_PLANEACION = USUARIO.tipo === "planeacion";
+
   function toast(msg) {
     const t = document.getElementById("toast");
     t.textContent = msg;
@@ -32,7 +36,9 @@
     }
     if (!res.ok) {
       let msg = "Error de servidor";
-      try { msg = (await res.json()).error || msg; } catch (e) {}
+      let codigo = "";
+      try { const d = await res.json(); msg = d.error || msg; codigo = d.codigo || ""; } catch (e) {}
+      if (codigo === "DEBE_CAMBIAR_PASSWORD") window.location.href = "/login.html?cambiar=1";
       throw new Error(msg);
     }
     return res;
@@ -163,8 +169,8 @@
     s.id = "stEstilos";
     s.textContent =
       ".st-chip{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin:0 0 12px;padding:8px 12px;border-radius:8px;font-size:.86rem;border:1px solid;}" +
-      ".st-ok{background:#e8f6ee;border-color:#a8d8b9;color:#1b5e36;}" +
-      ".st-warn{background:#fff3d6;border-color:#f0c36b;color:#7a4b00;}" +
+      ".st-ok{background:var(--best-bg);border-color:var(--brand);color:var(--brand-dark);}" +
+      ".st-warn{background:var(--second-bg);border-color:var(--second);color:var(--second);}" +
       ".st-chip a{color:inherit;text-decoration:underline;cursor:pointer;margin-left:auto;}" +
       ".st-sub{color:var(--ink-soft,#666);font-size:.85rem;margin:4px 0 10px;}" +
       ".st-fila{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}" +
@@ -283,6 +289,7 @@
         w.textContent = "⚠ Los proveedores están cargando en la " + stEtiqueta(st.recepcion);
         el.appendChild(w);
       }
+      if (ES_PLANEACION) return; // Planeación no cambia la semana de trabajo
       const a = document.createElement("a");
       a.textContent = "Cambiar en «Cargar cotizaciones»";
       a.addEventListener("click", () => {
@@ -438,7 +445,7 @@
       ".promo-tabla .num{text-align:right;white-space:nowrap;}" +
       ".promo-nivel{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.76rem;font-weight:700;white-space:nowrap;}" +
       ".promo-fuerte{background:#fde7d9;color:#9a3412;border:1px solid #f4b793;}" +
-      ".promo-normal{background:#e8f6ee;color:#1b5e36;border:1px solid #a8d8b9;}";
+      ".promo-normal{background:var(--best-bg);color:var(--brand-dark);border:1px solid var(--brand);}";
     document.head.appendChild(s);
   }
 
@@ -574,7 +581,7 @@
     setTimeout(promoRefrescar, 1500);
     setInterval(promoRefrescar, Number(window.__PROMO_MS) || 45000);
   }
-  setTimeout(promoIniciar, 0);
+  if (!ES_PLANEACION) setTimeout(promoIniciar, 0);
   // ===== FIN PRODUCTOS EN PROMOCIÓN =====
 
   // ===== LOS MÁS CAROS DE LA SEMANA (recuadro en Alertas, por proveedor) =====
@@ -857,7 +864,7 @@
     }
     setInterval(() => { if (mcVisible()) mcRefrescar(); }, Number(window.__MC_MS) || 60000);
   }
-  setTimeout(mcIniciar, 0);
+  if (!ES_PLANEACION) setTimeout(mcIniciar, 0);
   // ===== FIN LOS MÁS CAROS DE LA SEMANA =====
 
   // ---------- carga de archivos ----------
@@ -3601,8 +3608,11 @@
     window.location.href = "/login.html";
   });
 
-  renderAll();
-  loadSettings();
+  // Cotizaciones, comparativo, alertas y porcentaje de contrapropuesta son del administrador
+  if (!ES_PLANEACION) {
+    renderAll();
+    loadSettings();
+  }
 
 
   // === RECORDAR ULTIMA SESION MERCALDAS ===
@@ -3829,7 +3839,8 @@
           '"]'
         );
 
-      if (btn) {
+      // Solo se restaura una pestaña que este usuario puede ver
+      if (btn && getComputedStyle(btn).display !== "none") {
 
         btn.click();
 
@@ -4858,7 +4869,7 @@
     const badge = function (p) {
       if (p.estado === "emitida") return '<span style="background:#1F4E79;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">OC emitida</span>';
       if (p.estado === "faltan_precios") return '<span style="background:#e67e22;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">Faltan ' + p.sin_precio + " precio(s)</span>";
-      return '<span style="background:#1C8B3C;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">Listo para OC</span>';
+      return '<span style="background:var(--brand);color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;">Listo para OC</span>';
     };
     box.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
@@ -6051,23 +6062,23 @@
     const s = document.createElement("style");
     s.id = "hnEstilos";
     s.textContent = [
-      ".hn-card{background:#fff;border:1px solid #B7C9BD;border-radius:12px;padding:16px 18px;margin:0 0 14px}",
+      ".hn-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:0 0 14px}",
       ".hn-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}",
-      ".hn-h{margin:0;font-size:1.15rem;color:#1F6B45}.hn-sub{margin:4px 0 0;color:#5b6b61;font-size:.88rem}",
+      ".hn-h{margin:0;font-family:var(--fuente-titulos);font-size:1.35rem;color:var(--brand-dark)}.hn-sub{margin:4px 0 0;color:var(--ink-soft);font-size:.9rem}",
       ".hn-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 14px}",
-      ".hn-m{background:#F7FBF8;border:1px solid #E3ECE6;border-radius:10px;padding:10px 14px}.hn-m span{display:block;font-size:.8rem;color:#5b6b61}.hn-m b{font-size:1.4rem;color:#24342B}",
-      ".hn-wrap{overflow-x:auto;border:1px solid #B7C9BD;border-radius:12px;background:#fff;margin:0 0 14px}",
-      ".hn-t{width:100%;min-width:940px;border-collapse:collapse;font-size:.88rem}",
-      ".hn-t th{background:#6FAE82;color:#fff;font-weight:600;padding:8px 10px;text-align:center;border:1px solid #B7C9BD}",
-      ".hn-t td{padding:8px 10px;border-top:1px solid #E3ECE6;vertical-align:middle;color:#24342B}.hn-t td.n{text-align:right;white-space:nowrap}",
-      ".hn-t tbody tr:nth-child(even) td{background:#F7FBF8}.hn-t small{display:block;color:#5b6b61}",
-      ".hn-b{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.78rem;white-space:nowrap}",
-      ".hn-ok{background:#E3F4E8;color:#1b6b3a}.hn-wait{background:#FFF2CC;color:#8a5a00}.hn-turn{background:#E1EEFB;color:#14508c}.hn-no{background:#FDE7E7;color:#9c2a2a}.hn-none{background:#EEF3F0;color:#44554b}",
-      ".hn-btn{padding:8px 14px;border-radius:8px;border:1px solid #1F6B45;background:#fff;color:#1F6B45;font-weight:600;cursor:pointer}.hn-btn.p{background:#1F6B45;color:#fff}",
-      ".hn-in{width:88px;padding:5px 6px;border:1px dashed #1F6B45;border-radius:6px;text-align:right;background:#F1F8FE}",
-      ".hn-pf{width:96px;padding:5px 6px;border:1px solid #1F6B45;border-radius:6px;text-align:right;background:#FFFBEA}",
-      ".hn-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.hn-av{margin:6px 0;padding:8px 12px;border-radius:8px;font-size:.88rem}",
-      ".hn-av.error{background:#FDE7E7;color:#9c2a2a}.hn-av.aviso{background:#FFF2CC;color:#8a5a00}.hn-av.info{background:#EEF3F0;color:#44554b}",
+      ".hn-m{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 14px}.hn-m span{display:block;font-size:.82rem;color:var(--ink-soft)}.hn-m b{font-family:var(--fuente-titulos);font-size:1.5rem;color:var(--brand-dark)}",
+      ".hn-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);margin:0 0 14px}",
+      ".hn-t{width:100%;min-width:940px;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}",
+      ".hn-t th{background:var(--cabecera);color:#fff;font-weight:600;padding:8px 10px;text-align:center;border:1px solid var(--border)}",
+      ".hn-t td{padding:8px 10px;border-top:1px solid var(--border);vertical-align:middle;color:var(--ink)}.hn-t td.n{text-align:right;white-space:nowrap}",
+      ".hn-t tbody tr:nth-child(even) td{background:var(--zebra)}.hn-t small{display:block;color:var(--ink-soft)}",
+      ".hn-b{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.8rem;white-space:nowrap}",
+      ".hn-ok{background:var(--best-bg);color:var(--brand-dark)}.hn-wait{background:var(--second-bg);color:var(--second)}.hn-turn{background:#E1EEFB;color:#14508c}.hn-no{background:var(--warn-bg);color:var(--warn)}.hn-none{background:var(--bg);color:var(--ink-soft)}",
+      ".hn-btn{padding:8px 14px;border-radius:8px;border:1px solid var(--brand-dark);background:var(--bg-card);color:var(--brand-dark);font-weight:600;cursor:pointer}.hn-btn.p{background:var(--brand);border-color:var(--brand);color:#fff}",
+      ".hn-in{width:88px;padding:5px 6px;border:1px dashed var(--brand-dark);border-radius:6px;text-align:right;background:var(--bg-card);color:var(--ink)}",
+      ".hn-pf{width:96px;padding:5px 6px;border:1px solid var(--brand-dark);border-radius:6px;text-align:right;background:var(--acento-tint);color:var(--ink)}",
+      ".hn-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.hn-av{margin:6px 0;padding:8px 12px;border-radius:8px;font-size:.9rem}",
+      ".hn-av.error{background:var(--warn-bg);color:var(--warn)}.hn-av.aviso{background:var(--second-bg);color:var(--second)}.hn-av.info{background:var(--bg);color:var(--ink-soft)}",
     ].join("\n");
     document.head.appendChild(s);
   }
@@ -6123,6 +6134,7 @@
       } else {
         estado = p.estado === "cerrada" ? '<span class="hn-b hn-ok">Cerrada</span>'
           : p.tu_turno > 0 ? '<span class="hn-b hn-turn">Te toca decidir (' + p.tu_turno + ")</span>"
+          : p.por_enviar_portal ? '<span class="hn-b hn-turn">Por enviar al portal</span>'
           : '<span class="hn-b hn-wait">Esperando al proveedor</span>';
         accion = '<button class="hn-btn" data-hn="abrir" data-id="' + p.negociacion_id + '">Abrir hoja</button>';
       }
@@ -6164,7 +6176,7 @@
     else if (sigueIndice === k) m = '<input class="hn-in" type="number" min="100" step="100" data-codigo="' + hnEsc(p.codigo) + '" value="' + hnSugerencia(p) + '" title="Tu nueva contrapropuesta">';
     else m = '<span style="color:#9aa8a0">—</span>';
     let v;
-    if (r.proveedor != null) v = r.mercaldas != null && r.proveedor === r.mercaldas ? '<span style="color:#1b6b3a;font-weight:600">Acepta</span>' : hnMoneda(r.proveedor);
+    if (r.proveedor != null) v = r.mercaldas != null && r.proveedor === r.mercaldas ? '<span style="color:var(--brand-dark);font-weight:600">Acepta</span>' : hnMoneda(r.proveedor);
     else if (p.turno === "proveedor" && p.ultimaRonda === 2 * (k + 1)) v = '<span style="color:#8a5a00">Esperando</span>';
     else v = '<span style="color:#9aa8a0">—</span>';
     return '<td class="n">' + m + '</td><td class="n">' + v + "</td>";
@@ -6193,8 +6205,16 @@
       ? '<div class="hn-card"><div class="hn-row"><b>Productos seleccionados:</b>' +
         '<button class="hn-btn p" data-hn="aceptar">Aceptar su precio</button><button class="hn-btn" data-hn="contraproponer">Contraproponer</button><button class="hn-btn" data-hn="sinacuerdo">Sin acuerdo</button></div>' +
         '<p class="hn-sub">Marca los productos en tu turno. "Contraproponer" usa el precio de la casilla de cada fila (ya viene con una sugerencia que puedes cambiar).</p></div>' : "";
+    const portal = n.portal || {};
+    const cuandoPortal = portal.publicado_en ? new Date(portal.publicado_en).toLocaleString("es-CO", { timeZone: "America/Bogota", dateStyle: "short", timeStyle: "short" }) : "";
+    const bloquePortal = portal.ronda_pendiente == null ? ""
+      : portal.publicado
+        ? '<div class="hn-row" style="margin-bottom:10px"><span class="hn-b hn-ok">✓ Enviada al portal ' + hnEsc(cuandoPortal) + "</span>" +
+          '<span class="hn-sub" style="margin:0">El proveedor la ve en su portal y responde allí; su respuesta queda como precio final.</span></div>'
+        : '<div class="hn-row" style="margin-bottom:10px"><button class="hn-btn p" data-hn="portal">Enviar contrapropuesta al portal del proveedor</button>' +
+          '<span class="hn-sub" style="margin:0">Le llega un aviso y un correo, y responde sin Excel.</span></div>';
     const barraEdicion = '<div class="hn-card"><div class="hn-row"><b>Modo edición:</b> escribe el precio final acordado en cada producto y pulsa Guardar.' +
-      '<input id="hnNota" type="text" maxlength="300" placeholder="Nota (opcional): ej. acordado por teléfono con Juan" style="flex:1;min-width:260px;padding:6px 8px;border:1px solid #B7C9BD;border-radius:6px">' +
+      '<input id="hnNota" type="text" maxlength="300" placeholder="Nota (opcional): ej. acordado por teléfono con Juan" style="flex:1;min-width:260px;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +
       '<button class="hn-btn p" data-hn="guardarpf">Guardar precios</button><button class="hn-btn" data-hn="cancelarpf">Cancelar</button></div>' +
       '<p class="hn-sub">Solo se guardan los precios que cambies. Quedan marcados como "manual" en el historial, con tu nota.</p></div>';
     hnRaiz().innerHTML =
@@ -6202,8 +6222,9 @@
       '<button class="hn-btn" data-hn="volver">← Todos los proveedores</button></div></div>' +
       '<div class="hn-metrics"><div class="hn-m"><span>Ronda actual</span><b>' + n.ronda_visible + '</b></div><div class="hn-m"><span>Productos cerrados</span><b>' + r.cerrados + " de " + r.total + '</b></div>' +
       '<div class="hn-m"><span>Esperan tu decisión</span><b>' + r.tu_turno + '</b></div><div class="hn-m"><span>Ahorro promedio</span><b>' + (r.ahorro_promedio_pct == null ? "—" : String(r.ahorro_promedio_pct).replace(".", ",") + " %") + "</b></div></div>" +
-      '<div class="hn-card"><div class="hn-row"><button class="hn-btn" data-hn="exportar">Descargar Excel de la ronda</button><button class="hn-btn" data-hn="editar">Editar precios finales (sin Excel)</button>' +
-      '<span class="hn-sub" style="margin:0 0 0 8px">Respuesta del proveedor:</span><input type="file" id="hnArchivo" accept=".xlsx"><button class="hn-btn p" data-hn="revisar">Revisar archivo</button></div><div id="hnPrevia"></div></div>' +
+      '<div class="hn-card">' + bloquePortal + '<div class="hn-row"><button class="hn-btn" data-hn="editar">Editar precios finales (sin Excel)</button>' +
+      '<span class="hn-sub" style="margin:0 0 0 8px">Proveedor sin acceso al portal:</span><button class="hn-btn" data-hn="exportar">Descargar Excel de la ronda</button>' +
+      '<input type="file" id="hnArchivo" accept=".xlsx"><button class="hn-btn" data-hn="revisar">Revisar archivo</button></div><div id="hnPrevia"></div></div>' +
       '<div class="hn-wrap"><table class="hn-t"><thead><tr><th rowspan="2"><input type="checkbox" data-hn="todos" title="Marcar todos los que esperan tu decisión"></th><th rowspan="2" style="text-align:left">Producto</th><th rowspan="2">Cotizó</th><th colspan="2">Ronda 1</th><th colspan="2">Ronda 2</th><th colspan="2">Ronda 3</th><th rowspan="2">Precio final</th><th rowspan="2">Ahorro</th><th rowspan="2">Estado</th></tr>' +
       "<tr><th>Mercaldas</th><th>Proveedor</th><th>Mercaldas</th><th>Proveedor</th><th>Mercaldas</th><th>Proveedor</th></tr></thead><tbody>" + filas + "</tbody></table></div>" + (HN.editando ? barraEdicion : barra);
   }
@@ -6215,6 +6236,22 @@
       if (!confirm("Estas contrapropuestas piden una baja de más de " + info.umbral_pct + " %. Puede ser un error de presentación o de unidad:\n\n" + lista + "\n\n¿Descargar el Excel de todos modos?")) return;
     }
     window.location.href = "/api/negociacion/" + HN.negId + "/exportar";
+  }
+
+  async function hnEnviarPortal() {
+    const info = await (await api("/api/negociacion/" + HN.negId + "/exportar?previsualizar=1")).json();
+    let texto = "Se enviarán " + info.total + " contrapropuesta(s) al portal de " + HN.hoja.negociacion.proveedor + ". El proveedor recibe un aviso y un correo.";
+    if (info.alertas.length) {
+      texto += "\n\nOjo: estas piden una baja de más de " + info.umbral_pct + " % (puede ser un error de presentación o de unidad):\n" +
+        info.alertas.slice(0, 6).map((a) => "• " + a.producto + ": cotizó " + hnMoneda(a.cotizado) + ", contrapropuesta " + hnMoneda(a.contra) + " (baja " + String(a.bajaPct).replace(".", ",") + " %)").join("\n");
+    }
+    if (!confirm(texto + "\n\n¿Enviar?")) return;
+    const j = await (await api("/api/negociacion/" + HN.negId + "/enviar-portal", { method: "POST" })).json();
+    toast(j.usuarios
+      ? "Contrapropuesta enviada (" + j.productos + " productos). Avisamos a " + j.usuarios + " usuario(s) del proveedor."
+      : "Quedó publicada, pero el proveedor no tiene cuenta activa en el portal: descarga el Excel y envíaselo.");
+    HN.hoja = j.hoja;
+    hnRenderHoja();
   }
 
   async function hnRevisar(confirmar) {
@@ -6294,6 +6331,7 @@
       else if (que === "iniciar") await hnIniciar(el.dataset.prov);
       else if (que === "volver") await hnTablero();
       else if (que === "exportar") await hnExportar();
+      else if (que === "portal") await hnEnviarPortal();
       else if (que === "revisar") await hnRevisar(false);
       else if (que === "guardar") await hnRevisar(true);
       else if (que === "cancelar") document.getElementById("hnPrevia").innerHTML = "";

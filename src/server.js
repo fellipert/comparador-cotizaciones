@@ -6,6 +6,9 @@ const cookieParser = require("cookie-parser");
 const XLSX = require("xlsx");
 
 const db = require("./db");
+const auth = require("./auth");
+const notificaciones = require("./notificaciones");
+const { requireAdmin, requireRol, requireSesion } = auth;
 const { parseWorkbook } = require("./parser");
 const ExcelJS = require("exceljs");
 const fs = require("fs");
@@ -18,6 +21,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const APP_ENV = process.env.APP_ENV || "produccion";
 
+app.disable("x-powered-by");
+// nginx corre en el mismo servidor: se confía en su X-Forwarded-For / X-Forwarded-Proto (IP real y https)
+app.set("trust proxy", "loopback");
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 20 },
@@ -27,6 +34,17 @@ const upload = multer({
   },
 });
 
+// El logo es una imagen: con el filtro de Excel de arriba nunca se podía subir
+const subirImagen = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ok = /^image\/(png|jpeg)$/.test(file.mimetype) && /\.(png|jpe?g)$/i.test(file.originalname);
+    cb(ok ? null : new Error("El logo debe ser una imagen PNG o JPG."), ok);
+  },
+});
+
+app.use(auth.cabecerasSeguridad);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -58,7 +76,7 @@ app.use((req, res, next) => {
   next();
 });
 
-require("./ordenes_compra")(app, requireAdmin);
+require("./ordenes_compra")(app, requireAdmin, requireRol("admin", "planeacion"));
 require("./negociacion_hoja")(app, requireAdmin);
 require("./promociones")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c), computeComparativo: (...a) => computeComparativo(...a) });
 require("./mas_caros")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c) });
@@ -77,1209 +95,23 @@ app.get("/entorno.js", (req, res) => {
   res.type("application/javascript").set("Cache-Control", "no-store");
   res.send(APP_ENV === "dev" ? BANNER_PRUEBAS : "");
 });
+// index.html, proveedor.html y login.html pasan por aquí antes que los archivos estáticos: cada rol ve solo su página
+auth.registrarPaginas(app);
 app.use(express.static(path.join(__dirname, "..", "public")));
 
-const SESION_DIAS = 7;
-const COOKIE_NAME = process.env.COOKIE_NAME || "sesion_token";
+// ======================================================
+// SESIÓN, USUARIOS, AVISOS, SUBASTAS Y PORTAL DE PROVEEDORES
+// La autenticación y los roles viven en auth.js. El portal del proveedor ya no usa Excel:
+// recibe las subastas de sus productos y responde las contrapropuestas (portal_proveedor.js).
+// ======================================================
 
-function getUsuarioDeSesion(req) {
-  const token = req.cookies && req.cookies[COOKIE_NAME];
-  if (!token) return null;
-  const fila = db.prepare(`
-    SELECT u.id, u.usuario, u.tipo, u.proveedor_nombre, s.expira_en
-    FROM sesiones s JOIN usuarios u ON u.id = s.usuario_id
-    WHERE s.token = ?
-  `).get(token);
-  if (!fila) return null;
-  if (new Date(fila.expira_en) < new Date()) {
-    db.prepare("DELETE FROM sesiones WHERE token = ?").run(token);
-    return null;
-  }
-  return fila;
-}
-
-function requireAdmin(req, res, next) {
-  const usuario = getUsuarioDeSesion(req);
-  if (!usuario || usuario.tipo !== "admin") {
-    return res.status(401).json({ error: "No autorizado. Inicia sesión." });
-  }
-  req.usuarioActual = usuario;
-  next();
-}
-
-app.post("/api/auth/login", (req, res) => {
-  const { usuario, password } = req.body || {};
-  const nombreUsuario = usuario ? String(usuario).trim() : "";
-  if (!nombreUsuario || !password) {
-    return res.status(400).json({ error: "Falta usuario o contraseña." });
-  }
-  const fila = db.prepare("SELECT * FROM usuarios WHERE usuario = ?").get(nombreUsuario);
-  if (!fila) return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
-
-  const hashIntento = db.hashPassword(password, fila.password_salt);
-  if (hashIntento !== fila.password_hash) {
-    return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
-  }
-
-  const token = crypto.randomBytes(32).toString("hex");
-  const expira = new Date(Date.now() + SESION_DIAS * 24 * 60 * 60 * 1000);
-  db.prepare("INSERT INTO sesiones (token, usuario_id, expira_en, creado_en) VALUES (?, ?, ?, ?)")
-    .run(token, fila.id, expira.toISOString(), new Date().toISOString());
-
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESION_DIAS * 24 * 60 * 60 * 1000,
-  });
-  res.json({ ok: true, usuario: fila.usuario, tipo: fila.tipo, proveedorNombre: fila.proveedor_nombre });
-});
-
-app.post("/api/auth/logout", (req, res) => {
-  const token = req.cookies && req.cookies[COOKIE_NAME];
-  if (token) db.prepare("DELETE FROM sesiones WHERE token = ?").run(token);
-  res.clearCookie(COOKIE_NAME, { path: "/" });
-  res.json({ ok: true });
-});
-
-app.get("/api/auth/me", (req, res) => {
-  const usuario = getUsuarioDeSesion(req);
-  if (!usuario) return res.status(401).json({ error: "No hay sesión activa." });
-  res.json({ usuario: usuario.usuario, tipo: usuario.tipo, proveedorNombre: usuario.proveedor_nombre });
-});
-
-app.post("/api/auth/solicitar-codigo", (req, res) => {
-  const { usuario } = req.body || {};
-  const nombreUsuario = usuario ? String(usuario).trim() : "";
-  if (nombreUsuario) {
-    const fila = db.prepare("SELECT id FROM usuarios WHERE usuario = ?").get(nombreUsuario);
-    if (fila) {
-      const codigo = String(crypto.randomInt(100000, 999999));
-      const expira = new Date(Date.now() + 15 * 60 * 1000);
-      db.prepare(`
-        INSERT INTO codigos_recuperacion (usuario, codigo, expira_en, creado_en)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(usuario) DO UPDATE SET codigo = excluded.codigo, expira_en = excluded.expira_en, creado_en = excluded.creado_en
-      `).run(nombreUsuario, codigo, expira.toISOString(), new Date().toISOString());
-      console.log("=".repeat(60));
-      console.log("CÓDIGO DE RECUPERACIÓN SOLICITADO");
-      console.log("  usuario: " + nombreUsuario);
-      console.log("  código:  " + codigo + "  (válido 15 minutos)");
-      console.log("=".repeat(60));
-    }
-  }
-  res.json({ ok: true });
-});
-
-app.post("/api/auth/resetear-password", (req, res) => {
-  const { usuario, codigo, nuevaPassword } = req.body || {};
-  const nombreUsuario = usuario ? String(usuario).trim() : "";
-  const codigoIntento = codigo ? String(codigo).trim() : "";
-  if (!nombreUsuario || !codigoIntento || !nuevaPassword) {
-    return res.status(400).json({ error: "Faltan datos." });
-  }
-  if (String(nuevaPassword).length < 6) {
-    return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres." });
-  }
-
-  const fila = db.prepare("SELECT * FROM codigos_recuperacion WHERE usuario = ?").get(nombreUsuario);
-  if (!fila || fila.codigo !== codigoIntento) {
-    return res.status(401).json({ error: "Código incorrecto." });
-  }
-  if (new Date(fila.expira_en) < new Date()) {
-    db.prepare("DELETE FROM codigos_recuperacion WHERE usuario = ?").run(nombreUsuario);
-    return res.status(401).json({ error: "El código expiró. Solicita uno nuevo." });
-  }
-
-  const usuarioFila = db.prepare("SELECT id FROM usuarios WHERE usuario = ?").get(nombreUsuario);
-  if (!usuarioFila) return res.status(404).json({ error: "Usuario no encontrado." });
-
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = db.hashPassword(nuevaPassword, salt);
-  const resetear = db.transaction(() => {
-    db.prepare("UPDATE usuarios SET password_hash = ?, password_salt = ? WHERE id = ?").run(hash, salt, usuarioFila.id);
-    db.prepare("DELETE FROM codigos_recuperacion WHERE usuario = ?").run(nombreUsuario);
-    db.prepare("DELETE FROM sesiones WHERE usuario_id = ?").run(usuarioFila.id);
-  });
-  resetear();
-
-  res.json({ ok: true });
-});
+auth.registrarRutas(app);
+notificaciones.registrarRutas(app, requireSesion);
+require("./usuarios_admin")(app);
+require("./subastas")(app, { obtenerSemanaTrabajo: () => obtenerSemanaTrabajo() });
+require("./portal_proveedor")(app);
 
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
-
-// todo lo que sigue bajo /api requiere sesión de administrador activa
-
-function requireProveedor(req, res, next) {
-  const usuario = getUsuarioDeSesion(req);
-
-  if (!usuario || usuario.tipo !== "proveedor") {
-    return res.status(401).json({
-      error: "No autorizado como proveedor."
-    });
-  }
-
-  req.usuarioActual = usuario;
-  next();
-}
-
-
-// ======================================================
-// PORTAL DE PROVEEDORES
-// Estas rutas están ANTES del middleware requireAdmin
-// ======================================================
-
-app.get("/api/proveedor/portal", requireProveedor, (req, res) => {
-  try {
-    const proveedor = req.usuarioActual.proveedor_nombre;
-
-    const ciclo = obtenerCicloActivo();
-
-    const productos = db.prepare(`
-      SELECT
-        pp.codigo,
-        pp.tipo,
-        pp.frecuencia,
-        pp.presentacion_proveedor,
-        c.producto,
-        c.presentacion
-      FROM proveedor_productos pp
-      LEFT JOIN catalogo c
-        ON c.codigo = pp.codigo
-      WHERE pp.proveedor = ?
-        AND pp.activo = 1
-      ORDER BY
-        CASE WHEN pp.tipo = 'habitual' THEN 0 ELSE 1 END,
-        COALESCE(c.producto, pp.codigo)
-    `).all(proveedor);
-
-    let cotizados = {};
-
-    if (ciclo) {
-      const filas = db.prepare(`
-        SELECT
-          q.codigo,
-          q.precio,
-          q.disponibilidad,
-          q.observacion
-        FROM quotes q
-        INNER JOIN files f
-          ON f.id = q.file_id
-        WHERE q.proveedor = ?
-          AND q.ciclo_id = ?
-          AND f.name = ?
-      `).all(
-        proveedor,
-        ciclo.id,
-        "Portal proveedor - " + ciclo.id
-      );
-
-      filas.forEach(r => {
-        cotizados[r.codigo] = {
-          precio: r.precio,
-          disponibilidad: r.disponibilidad,
-          observacion: r.observacion
-        };
-      });
-    }
-
-    const items = productos.map(p => ({
-      codigo: p.codigo,
-      producto: p.producto || "",
-      presentacion:
-        p.presentacion_proveedor ||
-        p.presentacion ||
-        "",
-      tipo: p.tipo,
-      frecuencia: p.frecuencia,
-      propuesta: cotizados[p.codigo] || null
-    }));
-
-    res.json({
-      proveedor,
-      usuario: req.usuarioActual.usuario,
-      ciclo: ciclo || null,
-      puedeCotizar: !!(
-        ciclo &&
-        !ciclo.cerrado_en
-      ),
-      habituales: items.filter(x => x.tipo === "habitual"),
-      adicionales: items.filter(x => x.tipo !== "habitual")
-    });
-
-  } catch (err) {
-    console.error("Error portal proveedor:", err);
-    res.status(500).json({
-      error: "No se pudo cargar el portal del proveedor."
-    });
-  }
-});
-
-
-app.post("/api/proveedor/propuesta", requireProveedor, (req, res) => {
-  try {
-    const proveedor = req.usuarioActual.proveedor_nombre;
-    const ciclo = obtenerCicloActivo();
-
-    if (!ciclo) {
-      return res.status(409).json({
-        error: "Mercaldas no tiene un ciclo de cotización activo."
-      });
-    }
-
-    if (ciclo.cerrado_en) {
-      return res.status(409).json({
-        error: "El ciclo de cotización ya está cerrado."
-      });
-    }
-
-    const items = Array.isArray(req.body?.items)
-      ? req.body.items
-      : [];
-
-    if (!items.length) {
-      return res.status(400).json({
-        error: "No se recibieron productos para cotizar."
-      });
-    }
-
-    const permitidos = new Map();
-
-    db.prepare(`
-      SELECT
-        pp.codigo,
-        pp.tipo,
-        c.producto,
-        COALESCE(pp.presentacion_proveedor, c.presentacion) AS presentacion
-      FROM proveedor_productos pp
-      LEFT JOIN catalogo c ON c.codigo = pp.codigo
-      WHERE pp.proveedor = ?
-        AND pp.activo = 1
-    `).all(proveedor).forEach(p => {
-      permitidos.set(String(p.codigo), p);
-    });
-
-    const validos = [];
-
-    for (const item of items) {
-      const codigo = String(item.codigo || "").trim();
-
-      if (!permitidos.has(codigo)) {
-        continue;
-      }
-
-      const precio = Number(item.precio);
-
-      if (!Number.isFinite(precio) || precio <= 0) {
-        continue;
-      }
-
-      const p = permitidos.get(codigo);
-
-      validos.push({
-        codigo,
-        precio,
-        producto: p.producto || "",
-        presentacion: p.presentacion || "",
-        disponibilidad:
-          item.disponibilidad
-            ? String(item.disponibilidad).trim()
-            : null,
-        observacion:
-          item.observacion
-            ? String(item.observacion).trim()
-            : null
-      });
-    }
-
-    if (!validos.length) {
-      return res.status(400).json({
-        error: "Debes ingresar al menos un precio válido."
-      });
-    }
-
-    const nombreArchivo = "Portal proveedor - " + ciclo.id;
-
-    let archivo = db.prepare(`
-      SELECT id
-      FROM files
-      WHERE proveedor = ?
-        AND ciclo_id = ?
-        AND name = ?
-      LIMIT 1
-    `).get(proveedor, ciclo.id, nombreArchivo);
-
-    const guardar = db.transaction(() => {
-      let fileId;
-
-      if (archivo) {
-        fileId = archivo.id;
-
-        db.prepare(`
-          DELETE FROM quotes
-          WHERE file_id = ?
-        `).run(fileId);
-
-        db.prepare(`
-          UPDATE files
-          SET uploaded_at = ?
-          WHERE id = ?
-        `).run(new Date().toISOString(), fileId);
-
-      } else {
-        fileId = crypto.randomUUID();
-
-        db.prepare(`
-          INSERT INTO files
-          (
-            id,
-            name,
-            proveedor,
-            semana,
-            fecha_envio,
-            uploaded_at,
-            ciclo_id
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          fileId,
-          nombreArchivo,
-          proveedor,
-          ciclo.id,
-          new Date().toISOString().slice(0, 10),
-          new Date().toISOString(),
-          ciclo.id
-        );
-      }
-
-      const insertQuote = db.prepare(`
-        INSERT INTO quotes
-        (
-          file_id,
-          codigo,
-          producto,
-          presentacion,
-          disponibilidad,
-          precio,
-          observacion,
-          proveedor,
-          semana,
-          vigencia_fin,
-          ciclo_id
-        )
-        VALUES
-        (
-          @file_id,
-          @codigo,
-          @producto,
-          @presentacion,
-          @disponibilidad,
-          @precio,
-          @observacion,
-          @proveedor,
-          @semana,
-          @vigencia_fin,
-          @ciclo_id
-        )
-      `);
-
-      for (const item of validos) {
-        insertQuote.run({
-          file_id: fileId,
-          codigo: item.codigo,
-          producto: item.producto,
-          presentacion: item.presentacion,
-          disponibilidad: item.disponibilidad,
-          precio: item.precio,
-          observacion: item.observacion,
-          proveedor,
-          semana: ciclo.id,
-          vigencia_fin: ciclo.fecha_fin_vigencia,
-          ciclo_id: ciclo.id
-        });
-      }
-
-      return fileId;
-    });
-
-    guardar();
-
-    res.json({
-      ok: true,
-      proveedor,
-      ciclo: ciclo.id,
-      nProductos: validos.length,
-      mensaje: "Propuesta comercial guardada."
-    });
-
-  } catch (err) {
-    console.error("Error guardando propuesta proveedor:", err);
-
-    res.status(500).json({
-      error: "No se pudo guardar la propuesta comercial."
-    });
-  }
-});
-
-
-
-
-
-// ======================================================
-// EXCEL DE COTIZACIÓN PARA EL PROVEEDOR
-// ======================================================
-
-app.get("/api/proveedor/plantilla-cotizacion", requireProveedor, (req, res) => {
-  try {
-    const proveedor = req.usuarioActual.proveedor_nombre;
-    const ciclo = obtenerCicloActivo();
-
-    if (!ciclo) {
-      return res.status(409).json({
-        error: "Mercaldas todavía no tiene un ciclo de cotización activo."
-      });
-    }
-
-    const productos = db.prepare(`
-      SELECT
-        pp.codigo,
-        pp.tipo,
-        pp.frecuencia,
-        COALESCE(pp.presentacion_proveedor, c.presentacion, '') AS presentacion,
-        COALESCE(c.producto, '') AS producto
-      FROM proveedor_productos pp
-      LEFT JOIN catalogo c ON c.codigo = pp.codigo
-      WHERE pp.proveedor = ?
-        AND pp.activo = 1
-      ORDER BY
-        CASE WHEN pp.tipo = 'habitual' THEN 0 ELSE 1 END,
-        c.producto
-    `).all(proveedor);
-
-    const cotizacionesActuales = new Map();
-
-    db.prepare(`
-      SELECT codigo, precio, disponibilidad, observacion
-      FROM quotes
-      WHERE proveedor = ?
-        AND ciclo_id = ?
-      ORDER BY id DESC
-    `).all(proveedor, ciclo.id).forEach(q => {
-      if (!cotizacionesActuales.has(String(q.codigo))) {
-        cotizacionesActuales.set(String(q.codigo), q);
-      }
-    });
-
-    const filas = productos.map(p => {
-      const actual = cotizacionesActuales.get(String(p.codigo));
-
-      return {
-        "PLU": p.codigo,
-        "Producto": p.producto,
-        "Presentación": p.presentacion,
-        "Tipo": p.tipo,
-        "Frecuencia": p.frecuencia,
-        "Ofertar esta semana": p.tipo === "habitual"
-          ? "SI"
-          : (actual ? "SI" : "NO"),
-        "Precio": actual ? actual.precio : "",
-        "Disponibilidad": actual ? (actual.disponibilidad || "") : "",
-        "Observación": actual ? (actual.observacion || "") : ""
-      };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(filas);
-
-    ws["!cols"] = [
-      { wch: 12 },
-      { wch: 34 },
-      { wch: 18 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 20 },
-      { wch: 15 },
-      { wch: 18 },
-      { wch: 35 }
-    ];
-
-    const instrucciones = [
-      ["PORTAL DE PROVEEDORES MERCALDAS", ""],
-      ["Proveedor", proveedor],
-      ["Ciclo de cotización", ciclo.id],
-      ["Inicio recepción", ciclo.fecha_inicio_recepcion],
-      ["Fin recepción", ciclo.fecha_fin_recepcion],
-      ["Inicio vigencia", ciclo.fecha_inicio_vigencia],
-      ["Fin vigencia", ciclo.fecha_fin_vigencia],
-      ["", ""],
-      ["INSTRUCCIONES", ""],
-      ["1", "No cambie el PLU ni el nombre del producto."],
-      ["2", "Ingrese el precio únicamente de los productos que desea cotizar."],
-      ["3", "Para productos adicionales use SI o NO en 'Ofertar esta semana'."],
-      ["4", "El sistema solo aceptará PLU asociados a su empresa."],
-      ["5", "La semana se asigna automáticamente según el ciclo abierto por Mercaldas."]
-    ];
-
-    const wsInfo = XLSX.utils.aoa_to_sheet(instrucciones);
-    wsInfo["!cols"] = [{ wch: 24 }, { wch: 75 }];
-
-    const wb = XLSX.utils.book_new();
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      ws,
-      "Cotizacion"
-    );
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      wsInfo,
-      "Instrucciones"
-    );
-
-    const buffer = XLSX.write(wb, {
-      bookType: "xlsx",
-      type: "buffer"
-    });
-
-    const nombreSeguro = proveedor
-      .replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+/g, "_")
-      .replace(/^_+|_+$/g, "");
-
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="Cotizacion_' +
-        nombreSeguro +
-        "_" +
-        ciclo.id +
-        '.xlsx"'
-    );
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-
-    res.send(buffer);
-
-  } catch (err) {
-    console.error("Error plantilla proveedor:", err);
-
-    res.status(500).json({
-      error: "No se pudo generar la plantilla de cotización."
-    });
-  }
-});
-
-
-app.post(
-  "/api/proveedor/importar-cotizacion",
-  requireProveedor,
-  upload.single("archivo"),
-  (req, res) => {
-
-    try {
-      const proveedor = req.usuarioActual.proveedor_nombre;
-      const ciclo = obtenerCicloActivo();
-
-      if (!ciclo) {
-        return res.status(409).json({
-          error: "Mercaldas no tiene un ciclo de cotización activo."
-        });
-      }
-
-      if (ciclo.cerrado_en) {
-        return res.status(409).json({
-          error: "El ciclo de cotización está cerrado."
-        });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({
-          error: "No se recibió el archivo Excel."
-        });
-      }
-
-      const wb = XLSX.read(req.file.buffer, {
-        type: "buffer"
-      });
-
-      const ws =
-        wb.Sheets["Cotizacion"] ||
-        wb.Sheets["Cotización"] ||
-        wb.Sheets[wb.SheetNames[0]];
-
-      // =====================================================
-      // LECTURA DEL EXCEL CON DOS SECCIONES
-      // Habituales + Temporada / adicionales
-      // =====================================================
-
-      const matriz = XLSX.utils.sheet_to_json(ws, {
-        header: 1,
-        defval: ""
-      });
-
-      if (!matriz.length) {
-        return res.status(400).json({
-          error: "El archivo no contiene productos."
-        });
-      }
-
-
-      function normalizarTexto(valor) {
-        return String(valor ?? "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .trim()
-          .toLowerCase();
-      }
-
-
-      function nombreColumna(valor) {
-        return normalizarTexto(valor)
-          .replace(/\s+/g, " ");
-      }
-
-
-      const permitidos = new Map();
-
-      db.prepare(`
-        SELECT
-          pp.codigo,
-          pp.tipo,
-          COALESCE(c.producto, '') AS producto,
-          COALESCE(
-            pp.presentacion_proveedor,
-            c.presentacion,
-            ''
-          ) AS presentacion
-        FROM proveedor_productos pp
-        LEFT JOIN catalogo c
-          ON c.codigo = pp.codigo
-        WHERE pp.proveedor = ?
-          AND pp.activo = 1
-      `).all(proveedor).forEach(p => {
-        permitidos.set(
-          String(p.codigo).trim(),
-          p
-        );
-      });
-
-
-      function precioEntero(valor) {
-
-        if (
-          valor === null ||
-          valor === undefined ||
-          valor === ""
-        ) {
-          return null;
-        }
-
-        if (typeof valor === "number") {
-          return valor > 0 ? valor : null;
-        }
-
-        const limpio = String(valor)
-          .trim()
-          .replace(/[^\d]/g, "");
-
-        if (!limpio) return null;
-
-        const n = Number(limpio);
-
-        return Number.isFinite(n) && n > 0
-          ? n
-          : null;
-      }
-
-
-      const validos = [];
-      const errores = [];
-
-      let encabezados = null;
-      let seccionActual = null;
-
-
-      matriz.forEach((fila, indiceFila) => {
-
-        const valores = fila.map(v =>
-          String(v ?? "").trim()
-        );
-
-        const noVacios = valores.filter(v => v !== "");
-
-        if (!noVacios.length) {
-          return;
-        }
-
-
-        // ---------------------------------------------
-        // Detectar títulos de las secciones
-        // ---------------------------------------------
-
-        const textoFila = normalizarTexto(
-          valores.join(" ")
-        );
-
-        if (
-          textoFila.includes(
-            "cotizacion habitual de productos"
-          )
-        ) {
-          seccionActual = "habitual";
-          encabezados = null;
-          return;
-        }
-
-        if (
-          textoFila.includes("productos de temporada") ||
-          textoFila.includes("otras oportunidades") ||
-          textoFila.includes("productos adicionales")
-        ) {
-          seccionActual = "oportunidades";
-          encabezados = null;
-          return;
-        }
-
-
-        // ---------------------------------------------
-        // Detectar encabezado de cada tabla
-        // ---------------------------------------------
-
-        const nombres = valores.map(
-          nombreColumna
-        );
-
-        const tienePLU =
-          nombres.some(x =>
-            x === "plu" ||
-            x === "codigo"
-          );
-
-        const tieneProducto =
-          nombres.some(x =>
-            x === "producto"
-          );
-
-        const tienePrecio =
-          nombres.some(x =>
-            x === "precio ofertado" ||
-            x === "precio"
-          );
-
-
-        if (
-          tienePLU &&
-          tieneProducto &&
-          tienePrecio
-        ) {
-
-          encabezados = {};
-
-          nombres.forEach(
-            (nombre, posicion) => {
-
-              if (
-                nombre === "plu" ||
-                nombre === "codigo"
-              ) {
-                encabezados.codigo = posicion;
-              }
-
-              if (
-                nombre === "producto"
-              ) {
-                encabezados.producto = posicion;
-              }
-
-              if (
-                nombre === "presentacion"
-              ) {
-                encabezados.presentacion = posicion;
-              }
-
-              if (
-                nombre === "frecuencia"
-              ) {
-                encabezados.frecuencia = posicion;
-              }
-
-              if (
-                nombre === "ofertar esta semana" ||
-                nombre === "ofertar"
-              ) {
-                encabezados.ofertar = posicion;
-              }
-
-              if (
-                nombre === "precio ofertado" ||
-                nombre === "precio"
-              ) {
-                encabezados.precio = posicion;
-              }
-
-              if (
-                nombre === "disponibilidad"
-              ) {
-                encabezados.disponibilidad = posicion;
-              }
-
-              if (
-                nombre === "observacion"
-              ) {
-                encabezados.observacion = posicion;
-              }
-
-            }
-          );
-
-          return;
-        }
-
-
-        // Si todavía no estamos dentro de una tabla,
-        // ignoramos títulos y datos generales.
-        if (
-          !encabezados ||
-          encabezados.codigo === undefined
-        ) {
-          return;
-        }
-
-
-        // Una fila con solamente un texto suele ser
-        // título/separador, no producto.
-        if (noVacios.length === 1) {
-          return;
-        }
-
-
-        const codigo = String(
-          valores[encabezados.codigo] || ""
-        ).trim();
-
-
-        if (!codigo) {
-          return;
-        }
-
-
-        // ---------------------------------------------
-        // Seguridad: el PLU debe pertenecer al proveedor
-        // ---------------------------------------------
-
-        if (!permitidos.has(codigo)) {
-
-          errores.push(
-            "Fila " +
-            (indiceFila + 1) +
-            ": el PLU " +
-            codigo +
-            " no está asociado a " +
-            proveedor +
-            "."
-          );
-
-          return;
-        }
-
-
-        const productoDB =
-          permitidos.get(codigo);
-
-
-        // ---------------------------------------------
-        // Validar coherencia de la sección
-        // ---------------------------------------------
-
-        if (
-          seccionActual === "habitual" &&
-          productoDB.tipo !== "habitual"
-        ) {
-
-          errores.push(
-            "Fila " +
-            (indiceFila + 1) +
-            ": el PLU " +
-            codigo +
-            " aparece en Cotización habitual, " +
-            "pero está registrado como producto adicional."
-          );
-
-          return;
-        }
-
-
-        if (
-          seccionActual === "adicional" &&
-          productoDB.tipo === "habitual"
-        ) {
-
-          errores.push(
-            "Fila " +
-            (indiceFila + 1) +
-            ": el PLU " +
-            codigo +
-            " aparece como producto de temporada, " +
-            "pero está registrado como habitual."
-          );
-
-          return;
-        }
-
-
-        // ---------------------------------------------
-        // Productos de temporada
-        // ---------------------------------------------
-
-        let ofertar = "";
-
-        if (
-          encabezados.ofertar !== undefined
-        ) {
-
-          ofertar = normalizarTexto(
-            valores[encabezados.ofertar]
-          ).toUpperCase();
-
-        }
-
-
-        if (
-          productoDB.tipo !== "habitual" &&
-          ["NO", "N", "0"].includes(ofertar)
-        ) {
-          return;
-        }
-
-
-        // ---------------------------------------------
-        // Precio
-        // ---------------------------------------------
-
-        const precio =
-          encabezados.precio !== undefined
-            ? precioEntero(
-                valores[encabezados.precio]
-              )
-            : null;
-
-
-        // Precio vacío = no participa esta semana.
-        if (precio === null) {
-          return;
-        }
-
-
-        const disponibilidad =
-          encabezados.disponibilidad !== undefined
-            ? String(
-                valores[
-                  encabezados.disponibilidad
-                ] || ""
-              ).trim()
-            : "";
-
-
-        const observacion =
-          encabezados.observacion !== undefined
-            ? String(
-                valores[
-                  encabezados.observacion
-                ] || ""
-              ).trim()
-            : "";
-
-
-        validos.push({
-          codigo,
-          producto:
-            productoDB.producto,
-          presentacion:
-            productoDB.presentacion,
-          precio,
-          disponibilidad:
-            disponibilidad || null,
-          observacion:
-            observacion || null,
-          tipo:
-            productoDB.tipo
-        });
-
-      });
-
-
-      if (!validos.length && !errores.length) {
-
-        return res.status(400).json({
-          error:
-            "No se encontraron productos con precio para importar. " +
-            "Diligencia al menos un precio ofertado."
-        });
-
-      }
-
-
-      if (errores.length) {
-        return res.status(400).json({
-          error:
-            "El archivo contiene PLU que no pertenecen a este proveedor.",
-          errores
-        });
-      }
-
-
-      if (!validos.length) {
-        return res.status(400).json({
-          error:
-            "No se encontraron productos con precio para importar."
-        });
-      }
-
-
-      const nombreArchivo =
-        "Portal proveedor - " + ciclo.id;
-
-      let archivo = db.prepare(`
-        SELECT id
-        FROM files
-        WHERE proveedor = ?
-          AND ciclo_id = ?
-          AND name = ?
-        LIMIT 1
-      `).get(
-        proveedor,
-        ciclo.id,
-        nombreArchivo
-      );
-
-
-      const guardar = db.transaction(() => {
-
-        let fileId;
-
-        if (archivo) {
-
-          fileId = archivo.id;
-
-          db.prepare(`
-            UPDATE files
-            SET uploaded_at = ?
-            WHERE id = ?
-          `).run(
-            new Date().toISOString(),
-            fileId
-          );
-
-        } else {
-
-          fileId = crypto.randomUUID();
-
-          db.prepare(`
-            INSERT INTO files
-            (
-              id,
-              name,
-              proveedor,
-              semana,
-              fecha_envio,
-              uploaded_at,
-              ciclo_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            fileId,
-            nombreArchivo,
-            proveedor,
-            ciclo.id,
-            new Date().toISOString().slice(0, 10),
-            new Date().toISOString(),
-            ciclo.id
-          );
-        }
-
-
-        const borrarProducto = db.prepare(`
-          DELETE FROM quotes
-          WHERE file_id = ?
-            AND codigo = ?
-        `);
-
-
-        const insertar = db.prepare(`
-          INSERT INTO quotes
-          (
-            file_id,
-            codigo,
-            producto,
-            presentacion,
-            disponibilidad,
-            precio,
-            observacion,
-            proveedor,
-            semana,
-            vigencia_fin,
-            ciclo_id
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-
-
-        validos.forEach(item => {
-
-          borrarProducto.run(
-            fileId,
-            item.codigo
-          );
-
-          insertar.run(
-            fileId,
-            item.codigo,
-            item.producto,
-            item.presentacion,
-            item.disponibilidad,
-            item.precio,
-            item.observacion,
-            proveedor,
-            ciclo.id,
-            ciclo.fecha_fin_vigencia,
-            ciclo.id
-          );
-
-        });
-
-      });
-
-
-      guardar();
-
-
-      res.json({
-        ok: true,
-        proveedor,
-        ciclo: ciclo.id,
-        actualizados: validos.length,
-        mensaje:
-          "Cotización importada correctamente."
-      });
-
-    } catch (err) {
-
-      console.error(
-        "Error importando Excel proveedor:",
-        err
-      );
-
-      res.status(400).json({
-        error:
-          "No se pudo procesar el archivo: " +
-          err.message
-      });
-
-    }
-
-  }
-);
 
 
 
@@ -1290,7 +122,7 @@ app.post(
 app.post(
   "/api/configuracion/logo",
   requireAdmin,
-  upload.single("logo"),
+  subirImagen.single("logo"),
   (req, res) => {
 
     try {
@@ -1397,7 +229,44 @@ app.get(
 
 
 
-app.use("/api", requireAdmin);
+// Todo lo que sigue bajo /api es interno. El admin entra a todo; Planeación de la demanda solo a la demanda,
+// la distribución y el pedido por proveedor (sus órdenes de compra y el resumen de subasta se registran arriba).
+const PERMISOS_PLANEACION = [
+  ["GET", /^\/api\/semana$/],
+  ["GET", /^\/api\/ciclos(\/actual)?$/],
+  ["GET", /^\/api\/proveedores$/],
+  ["GET", /^\/api\/pedidos-demanda$/],
+  ["POST", /^\/api\/pedidos-demanda\/importar$/],
+  ["GET", /^\/api\/pedidos\/proveedor(\/excel)?$/],
+  ["GET", /^\/api\/pedidos\/distribucion-porcentajes(\/plantilla)?$/],
+  ["POST", /^\/api\/pedidos\/distribucion-porcentajes\/(importar|aplicar)$/],
+  ["GET", /^\/api\/pedidos\/distribucion\/\d+$/],
+  ["POST", /^\/api\/pedidos\/distribucion$/],
+];
+app.use("/api", auth.requireInterno(PERMISOS_PLANEACION));
+
+// Planeación no ve lo que ofertó cada proveedor ni las contrapropuestas: esos campos salen vacíos en Pedidos
+const CAMPOS_OCULTOS_PLANEACION = new Set([
+  "precio", "precio_ofertado", "contrapropuesta", "contrapropuesta_manual", "precio_asignado",
+  "precio_unitario", "subtotal", "fuente_precio", "quote_id", "negociacion_producto_id",
+]);
+function ocultarPreciosProveedor(valor) {
+  if (Array.isArray(valor)) return valor.map(ocultarPreciosProveedor);
+  if (valor && typeof valor === "object") {
+    const limpio = {};
+    for (const [k, v] of Object.entries(valor)) limpio[k] = CAMPOS_OCULTOS_PLANEACION.has(k) ? null : ocultarPreciosProveedor(v);
+    return limpio;
+  }
+  return valor;
+}
+const esPlaneacion = (req) => !!(req.usuarioActual && req.usuarioActual.tipo === "planeacion");
+app.use(["/api/pedidos", "/api/pedidos-demanda"], (req, res, next) => {
+  if (esPlaneacion(req)) {
+    const enviar = res.json.bind(res);
+    res.json = (cuerpo) => enviar(ocultarPreciosProveedor(cuerpo));
+  }
+  next();
+});
 
 // ---------- helpers ----------
 function getAllQuotes(cicloId) {
@@ -3697,6 +2566,17 @@ app.get(
             it.subtotal
 
         }));
+
+
+      // Planeación descarga el pedido con cantidades, sin los precios de la negociación
+      if (esPlaneacion(req)) {
+        filas.forEach(f => {
+          delete f["Precio ofertado proveedor"];
+          delete f["Contrapropuesta"];
+          delete f["Precio usado pedido"];
+          delete f["Subtotal"];
+        });
+      }
 
 
       const ws =

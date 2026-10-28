@@ -8,6 +8,8 @@ data/
 npm-debug.log*
 
 backups/
+# Logo de las OC que se sube en Configuración (distinto en cada servidor)
+public/assets/
 *.sqlite
 *.sqlite3
 .env.*
