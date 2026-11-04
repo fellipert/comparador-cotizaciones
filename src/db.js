@@ -114,6 +114,10 @@ if (!columnas.includes("activo")) {
 if (!columnas.includes("frecuencia")) {
   db.exec("ALTER TABLE proveedor_productos ADD COLUMN frecuencia TEXT NOT NULL DEFAULT 'diario'");
 }
+// Producto temporal: último día (hora de Colombia) en que el proveedor lo tiene; después sale solo de su stock
+if (!columnas.includes("disponible_hasta")) {
+  db.exec("ALTER TABLE proveedor_productos ADD COLUMN disponible_hasta TEXT");
+}
 
 const columnasQuotes = db.prepare("PRAGMA table_info(quotes)").all().map((c) => c.name);
 if (!columnasQuotes.includes("ciclo_id")) {

@@ -231,7 +231,7 @@ function getISOWeek(date) {
 
 /**
  * Dado cualquier fecha, calcula a qué ciclo Mercaldas pertenece:
- * la ventana de recepción (viernes a martes, cierra el martes a las 12:00 m.)
+ * la ventana de recepción (abre el viernes a las 6:00 a.m. y cierra el lunes a las 7:00 p.m., ver calendario.js)
  * y la vigencia de precios (miércoles a martes) que la siguen.
  */
 function calcularVentanaRecepcion(fechaISO) {
@@ -240,7 +240,7 @@ function calcularVentanaRecepcion(fechaISO) {
   const diasDesdeViernes = (dia - 5 + 7) % 7;
   const viernes = new Date(f);
   viernes.setUTCDate(f.getUTCDate() - diasDesdeViernes);
-  const martesCierre = new Date(viernes); martesCierre.setUTCDate(viernes.getUTCDate() + 4);
+  const lunesCierre = new Date(viernes); lunesCierre.setUTCDate(viernes.getUTCDate() + 3);
   const miercolesInicio = new Date(viernes); miercolesInicio.setUTCDate(viernes.getUTCDate() + 5);
   const martesFin = new Date(miercolesInicio); martesFin.setUTCDate(miercolesInicio.getUTCDate() + 6);
   const iso = (x) => x.toISOString().slice(0, 10);
@@ -251,7 +251,7 @@ function calcularVentanaRecepcion(fechaISO) {
     anio,
     semana_calendario: semana,
     fecha_inicio_recepcion: iso(viernes),
-    fecha_fin_recepcion: iso(martesCierre),
+    fecha_fin_recepcion: iso(lunesCierre),
     fecha_inicio_vigencia: iso(miercolesInicio),
     fecha_fin_vigencia: iso(martesFin),
   };

@@ -6,6 +6,7 @@ const db = require("./db");
 const auth = require("./auth");
 const correo = require("./correo");
 const notificaciones = require("./notificaciones");
+const cal = require("./calendario");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS subastas (
@@ -220,18 +221,26 @@ function enviarSubasta(s) {
   };
 }
 
-// Hora en que cierra la recepción el último día (martes), hora de Colombia
-const HORA_CIERRE_SEMANAL = "12:00";
+// Hora en que cierra la recepción el último día (lunes), hora de Colombia
+const HORA_CIERRE_SEMANAL = cal.HORA_CIERRE;
 
-// Al abrir la semana se pide precio de todos los productos que tienen proveedor activo, con plazo hasta el
+// La semana pide precio de todos los productos que tienen proveedor activo, desde el viernes a las 6:00 a.m. hasta el
 // cierre de la recepción. Cada proveedor solo recibe los suyos. Si la semana ya tiene una solicitud, no se crea otra.
-function solicitudSemanal(ciclo, usuario) {
+// Si se abre antes del viernes a las 6:00 a.m., la solicitud la envía sola automatizacion.js a esa hora.
+function solicitudSemanal(ciclo, usuario, momento = new Date()) {
   if (db.prepare("SELECT 1 FROM subastas WHERE ciclo_id = ? LIMIT 1").get(ciclo.id)) {
     return { enviada: false, motivo: "La semana " + ciclo.id + " ya tiene una solicitud de cotización." };
   }
   const limite = leerFechaLimite(ciclo.fecha_fin_recepcion + "T" + HORA_CIERRE_SEMANAL);
-  if (!limite || new Date(limite) <= new Date()) {
+  if (!limite || new Date(limite) <= momento) {
     return { enviada: false, motivo: "La recepción de " + ciclo.id + " ya cerró. Crea la solicitud en Subastas con un plazo nuevo." };
+  }
+  const apertura = cal.instante(ciclo.fecha_inicio_recepcion, cal.HORA_APERTURA);
+  if (momento < apertura && cal.tareasAutomaticasActivas()) {
+    return {
+      enviada: false, programada: true, apertura: apertura.toISOString(),
+      motivo: "La solicitud de cotización se enviará sola el " + fechaBogota(apertura.toISOString()) + " (hora de Colombia).",
+    };
   }
   const filas = db.prepare(`
     SELECT DISTINCT c.codigo, c.producto, c.presentacion
@@ -433,4 +442,4 @@ module.exports = function registrarSubastas(app, deps) {
   });
 };
 
-Object.assign(module.exports, { subastaPorId, productosDe, estadoEfectivo, fechaBogota, proveedoresPorCodigo, solicitudSemanal, HORA_CIERRE_SEMANAL });
+Object.assign(module.exports, { subastaPorId, productosDe, estadoEfectivo, fechaBogota, proveedoresPorCodigo, proveedoresConCuenta, solicitudSemanal, HORA_CIERRE_SEMANAL });

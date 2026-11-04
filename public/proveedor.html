@@ -36,6 +36,14 @@
   .vacio { text-align: center; padding: 34px 16px; color: var(--ink-soft); }
   .vacio .icono { font-size: 2rem; margin-bottom: 6px; }
   .pie { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+  .ap-resultados { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; max-height: 280px; overflow-y: auto; }
+  .ap-resultados:empty { display: none; }
+  .ap-resultados .catalogo-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--ink); font-family: inherit; }
+  .ap-resultados .catalogo-item:last-child { border-bottom: 0; }
+  .ap-elegido { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; background: var(--brand-tint); }
+  .ap-opcion { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; cursor: pointer; }
+  .ap-opcion:has(input:checked) { border-color: var(--brand); background: var(--brand-tint); }
+  .ap-opcion input { margin-top: 3px; }
   @media (max-width: 640px) {
     .marca-portal img { width: 112px; }
     header.top h1 { font-size: 1.3rem; }
@@ -75,10 +83,12 @@
   <div class="secciones" role="tablist">
     <button type="button" class="activa" data-seccion="solicitudes">Solicitudes de cotización <span class="count" id="cuentaSolicitudes">0</span></button>
     <button type="button" data-seccion="contrapropuestas">Contrapropuestas <span class="count" id="cuentaContra">0</span></button>
+    <button type="button" data-seccion="productos">Mis productos <span class="count" id="cuentaProductos">0</span></button>
   </div>
 
   <section id="secSolicitudes"><div class="card"><p class="texto-suave" style="margin:0">Cargando…</p></div></section>
   <section id="secContrapropuestas" style="display:none"></section>
+  <section id="secProductos" style="display:none"></section>
 </div>
 <div id="toast"></div>
 
@@ -92,6 +102,8 @@
   const DISPONIBILIDAD = ["Disponible", "Limitado", "No disponible"];
   const ESTADOS = { abierta: ["Abierta", "ok"], vencida: ["Plazo vencido", "espera"], cerrada: ["Cerrada", "gris"] };
   const P = { datos: null, seccion: "solicitudes" };
+  const SECCIONES = { solicitudes: "secSolicitudes", contrapropuestas: "secContrapropuestas", productos: "secProductos" };
+  const MAX_DIAS_TEMPORAL = 366;
 
   const $ = (id) => document.getElementById(id);
   const etiqueta = (e) => { const [t, c] = ESTADOS[e] || [e, "gris"]; return '<span class="etiqueta ' + c + '">' + t + "</span>"; };
@@ -105,11 +117,20 @@
     return h < 48 ? "cierra en " + h + " h" : "cierra en " + Math.floor(h / 24) + " días";
   }
 
+  // "hoy a las 7:00 p. m.", "mañana a las 7:00 p. m." o "el sábado, 7 de nov. a las 7:00 p. m." (hora de Colombia)
+  function cuandoLlega(iso) {
+    const d = new Date(iso);
+    const dia = (x) => x.toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
+    const hora = d.toLocaleTimeString("es-CO", { timeZone: "America/Bogota", hour: "numeric", minute: "2-digit" });
+    const cuando = dia(d) === dia(new Date()) ? "hoy" : dia(d) === dia(new Date(Date.now() + 86400000)) ? "mañana"
+      : "el " + d.toLocaleDateString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "short" });
+    return cuando + " a las " + hora;
+  }
+
   function irA(seccion) {
     P.seccion = seccion;
     document.querySelectorAll(".secciones button").forEach((b) => b.classList.toggle("activa", b.dataset.seccion === seccion));
-    $("secSolicitudes").style.display = seccion === "solicitudes" ? "" : "none";
-    $("secContrapropuestas").style.display = seccion === "contrapropuestas" ? "" : "none";
+    Object.entries(SECCIONES).forEach(([nombre, id]) => { $(id).style.display = nombre === seccion ? "" : "none"; });
   }
 
   async function cargar() {
@@ -117,6 +138,7 @@
     $("nombreProveedor").textContent = P.datos.proveedor;
     pintarSolicitudes();
     pintarContrapropuestas();
+    pintarProductos();
   }
 
   // ---------- Solicitudes de cotización ----------
@@ -131,20 +153,27 @@
     }
     $("secSolicitudes").innerHTML = lista.map((s) => {
       const editable = s.puede_ofertar;
-      const conPrecio = s.productos.filter((p) => p.oferta).length;
+      const cotizables = s.productos.filter((p) => !p.en_negociacion);
+      const conPrecio = cotizables.filter((p) => p.oferta).length;
+      const negociados = s.productos.filter((p) => p.en_negociacion).length;
+      const llega = s.contrapropuesta_auto ? cuandoLlega(s.contrapropuesta_auto) : null;
+      const verContra = 'Revisa la pestaña <a href="#" data-ir="contrapropuestas">Contrapropuestas</a>';
       let estadoTexto = "";
-      if (s.negociacion_iniciada) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya está negociando tu propuesta de esta semana. Revisa la pestaña <a href="#" data-ir="contrapropuestas">Contrapropuestas</a>.</div>';
-      else if (s.respondido_en && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + ". Puedes ajustarla hasta el cierre.</div>";
+      if (negociados && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya te envió la contrapropuesta de ' + negociados + " producto(s). " + verContra + ". Puedes seguir cotizando los demás" + (llega ? "; de lo nuevo te llega la contrapropuesta " + esc(llega) : ".") + "</div>";
+      else if (negociados || s.negociacion_iniciada) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya está negociando tu propuesta de esta semana. ' + verContra + ".</div>";
+      else if (s.respondido_en && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + "." + (llega ? " Puedes ajustarla hasta " + esc(llega) + ", cuando Mercaldas te envía su contrapropuesta." : " Puedes ajustarla hasta el cierre.") + "</div>";
       else if (s.respondido_en) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + ".</div>";
       else if (!editable) estadoTexto = '<div class="nota alerta" style="margin-bottom:12px">Esta solicitud ya no recibe propuestas.</div>';
       const filas = s.productos.map((p) => {
         const o = p.oferta || {};
-        const celdas = editable
+        const celdas = editable && !p.en_negociacion
           ? '<td><input class="manual-input precio" type="number" min="1" step="1" inputmode="numeric" placeholder="$" data-campo="precio" data-codigo="' + esc(p.codigo) + '" value="' + esc(o.precio != null ? o.precio : "") + '" aria-label="Precio de ' + esc(p.producto) + '"></td>' +
             '<td><select class="manual-input" data-campo="disponibilidad" data-codigo="' + esc(p.codigo) + '"><option value="">—</option>' +
             DISPONIBILIDAD.map((d) => '<option value="' + d + '"' + (o.disponibilidad === d ? " selected" : "") + ">" + d + "</option>").join("") + "</select></td>" +
             '<td><input class="manual-input obs" maxlength="300" data-campo="observacion" data-codigo="' + esc(p.codigo) + '" value="' + esc(o.observacion || "") + '" placeholder="Opcional"></td>'
-          : '<td class="celda-num">' + (p.oferta ? moneda(o.precio) : '<span class="texto-suave">Sin precio</span>') + "</td><td>" + esc(o.disponibilidad || "—") + "</td><td class='envuelve'>" + esc(o.observacion || "") + "</td>";
+          : '<td class="celda-num">' + (p.oferta ? moneda(o.precio) : '<span class="texto-suave">Sin precio</span>') +
+            (p.en_negociacion ? '<div><span class="etiqueta espera">En negociación</span></div>' : "") +
+            "</td><td>" + esc(o.disponibilidad || "—") + "</td><td class='envuelve'>" + esc(o.observacion || "") + "</td>";
         return "<tr><td>" + esc(p.codigo) + "</td><td class='envuelve'><b>" + esc(p.producto) + "</b>" + (p.observacion ? "<div class='texto-suave'>" + esc(p.observacion) + "</div>" : "") + "</td>" +
           "<td>" + esc(p.presentacion) + "</td><td class='celda-num'>" + num(p.cantidad_estimada) + "</td>" + celdas + "</tr>";
       }).join("");
@@ -156,7 +185,8 @@
         estadoTexto +
         '<div class="table-scroll"><table><thead><tr><th>PLU</th><th>Producto</th><th>Presentación</th><th class="celda-num">Cant. estimada</th><th>Precio unitario</th><th>Disponibilidad</th><th>Observación</th></tr></thead><tbody>' + filas + "</tbody></table></div>" +
         (editable
-          ? '<div class="pie"><span class="texto-suave">Escribe el precio en pesos por unidad de la presentación. Deja vacío lo que no vas a ofertar. <b data-cuenta>' + conPrecio + " de " + s.productos.length + "</b> con precio.</span>" +
+          ? '<div class="pie"><span class="texto-suave">Escribe el precio en pesos por unidad de la presentación. Deja vacío lo que no vas a ofertar. <b data-cuenta>' + conPrecio + " de " + cotizables.length + "</b> con precio." +
+            (llega ? " Mercaldas te envía su contrapropuesta " + esc(llega) : "") + "</span>" +
             '<button class="btn-primary" data-enviar="' + s.id + '">' + (s.respondido_en ? "Actualizar propuesta" : "Enviar propuesta") + "</button></div>"
           : "") +
         "</div>";
@@ -176,7 +206,11 @@
     const malos = conPrecio.filter((x) => !/^\d+$/.test(x.precio) || Number(x.precio) <= 0);
     if (malos.length) { toast("Revisa los precios: escribe solo números enteros en pesos, sin puntos ni signos."); return; }
     if (!conPrecio.length && !confirm("No escribiste ningún precio. ¿Quieres retirar tu propuesta de esta solicitud?")) return;
-    if (conPrecio.length && !confirm("Vas a enviar precio de " + conPrecio.length + " producto(s). Puedes ajustarlo hasta el cierre. ¿Enviar?")) return;
+    const s = P.datos.subastas.find((x) => String(x.id) === String(id));
+    const ajuste = s && s.contrapropuesta_auto
+      ? "Puedes ajustarlo hasta " + cuandoLlega(s.contrapropuesta_auto) + ", cuando Mercaldas te envía su contrapropuesta."
+      : "Puedes ajustarlo hasta el cierre.";
+    if (conPrecio.length && !confirm("Vas a enviar precio de " + conPrecio.length + " producto(s). " + ajuste + " ¿Enviar?")) return;
     boton.disabled = true;
     try {
       const r = await api("/api/proveedor/subastas/" + id + "/oferta", { method: "POST", json: { items: lista.map((x) => ({ ...x, precio: x.precio === "" ? null : Number(x.precio) })) } });
@@ -195,7 +229,7 @@
     $("cuentaContra").textContent = pendientes;
     $("cuentaContra").classList.toggle("alerta", pendientes > 0);
     if (!lista.length) {
-      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Después de recibir tu propuesta, Mercaldas puede enviarte una contrapropuesta. Te llegará un aviso aquí y a tu correo.</p></div>';
+      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Mercaldas envía las contrapropuestas a las 7:00 p.m. de los días en que la solicitud está abierta (viernes a lunes). Te llegará un aviso aquí y a tu correo.</p></div>';
       return;
     }
     $("secContrapropuestas").innerHTML = lista.map((n) => {
@@ -216,7 +250,7 @@
           }).join("") + "</tbody></table></div>" +
           '<div class="pie"><button class="btn-secondary" data-aceptar-todo="' + n.id + '">Aceptar todas</button><button class="btn-primary" data-responder="' + n.id + '">Enviar respuesta</button></div>';
       } else if (n.en_revision) {
-        html += '<div class="nota">Mercaldas está revisando tu propuesta (' + n.en_revision + " producto(s)). Te avisaremos cuando te envíe la contrapropuesta.</div>";
+        html += '<div class="nota">Mercaldas está revisando tu propuesta (' + n.en_revision + " producto(s)). Te avisaremos cuando te envíe la contrapropuesta (sale a las 7:00 p.m.).</div>";
       }
       if (n.cerrados.length) {
         html += '<p class="section-title" style="margin:18px 0 10px;font-size:0.95rem">Precios acordados</p><div class="table-scroll"><table><thead><tr><th>Producto</th><th class="celda-num">Cotizaste</th><th class="celda-num">Precio final</th><th>Estado</th></tr></thead><tbody>' +
@@ -255,10 +289,113 @@
     }
   }
 
+  // ---------- Mis productos ----------
+  const dia = (iso) => fecha(iso + "T12:00:00Z", false);
+  const sumarDias = (iso, n) => new Date(Date.parse(iso + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10);
+
+  function pintarProductos() {
+    const lista = P.datos.productos;
+    const fijos = lista.filter((p) => p.fijo).length, temporales = lista.length - fijos;
+    $("cuentaProductos").textContent = lista.length;
+    const filas = lista.map((p) => "<tr><td>" + esc(p.codigo) + "</td><td class='envuelve'><b>" + esc(p.producto) + "</b></td><td>" + esc(p.presentacion) + "</td><td>" +
+      (p.fijo
+        ? '<span class="etiqueta ok">Fijo</span>'
+        : '<span class="etiqueta espera">Temporal</span><div class="texto-suave">' + (p.hasta ? "hasta el " + esc(dia(p.hasta)) : "sin fecha de fin") + "</div>") +
+      "</td></tr>").join("");
+    $("secProductos").innerHTML = '<div class="card"><div class="cab-sub"><div><h3>Mi stock</h3>' +
+      '<div class="texto-suave">' + fijos + " fijo" + (fijos === 1 ? "" : "s") + " · " + temporales + " temporal" + (temporales === 1 ? "" : "es") +
+      ". Mercaldas te pide precio de estos productos en sus solicitudes de cotización.</div></div>" +
+      '<button type="button" class="btn-primary" data-agregar-producto>+ Agregar producto</button></div>' +
+      (lista.length
+        ? '<div class="table-scroll"><table><thead><tr><th>PLU</th><th>Producto</th><th>Presentación</th><th>Tipo</th></tr></thead><tbody>' + filas + "</tbody></table></div>"
+        : '<div class="vacio"><div class="icono">📦</div><b>Aún no tienes productos en tu stock.</b><p class="texto-suave">Agrega los productos que ofreces para que Mercaldas te pida precio.</p></div>') +
+      "</div>";
+  }
+
+  // El producto nuevo sale del catálogo de Mercaldas, así llega con el mismo PLU, nombre y presentación
+  function abrirAgregarProducto() {
+    const hoy = P.datos.hoy;
+    const m = C.modal("Agregar producto a mi stock",
+      '<div id="apBusqueda"><label class="etiqueta-campo" for="apBuscar">Busca el producto en el catálogo de Mercaldas</label>' +
+      '<input class="campo" type="search" id="apBuscar" autocomplete="off" maxlength="60" placeholder="Nombre o PLU, por ejemplo: tomate">' +
+      '<div class="ap-resultados" id="apResultados"></div>' +
+      '<p class="texto-suave" style="margin:8px 0 0">Escribe al menos 2 letras. Si no lo encuentras, pídele a Mercaldas que lo cree en el catálogo.</p></div>' +
+      '<form id="apForm" hidden>' +
+      '<div class="ap-elegido"><div id="apElegido"></div><button type="button" class="btn-secondary btn-chico" id="apCambiar">Cambiar</button></div>' +
+      '<p class="etiqueta-campo" style="margin:16px 0 0">¿Cómo lo tendrás en tu stock?</p>' +
+      '<label class="ap-opcion"><input type="radio" name="apTipo" value="fijo" checked><span><b>Fijo</b><br><span class="texto-suave">Lo ofreces siempre. Te pediremos precio en cada solicitud.</span></span></label>' +
+      '<label class="ap-opcion"><input type="radio" name="apTipo" value="temporal"><span><b>Temporal</b><br><span class="texto-suave">Lo tienes por un tiempo. Sale solo de tu stock después de la fecha que indiques.</span></span></label>' +
+      '<div id="apHastaCaja" hidden style="margin-top:12px"><label class="etiqueta-campo" for="apHasta">Lo tendré hasta el</label>' +
+      '<input class="campo" type="date" id="apHasta" min="' + hoy + '" max="' + sumarDias(hoy, MAX_DIAS_TEMPORAL) + '" style="max-width:220px"></div>' +
+      '<div id="apError" class="nota error" style="display:none;margin-top:12px"></div>' +
+      '<div class="fila-acciones derecha" style="margin-top:16px"><button type="button" class="btn-secondary" data-cerrar>Cancelar</button><button type="submit" class="btn-primary">Agregar a mi stock</button></div>' +
+      "</form>", { ancho: 560 });
+    const q = (sel) => m.caja.querySelector(sel);
+    let resultados = [], elegido = null, turno = 0, espera = null;
+    const error = (msg) => { q("#apError").textContent = msg; q("#apError").style.display = msg ? "block" : "none"; };
+
+    async function buscar() {
+      const texto = q("#apBuscar").value.trim();
+      const mio = ++turno; // una respuesta vieja no pisa la búsqueda más reciente
+      if (texto.length < 2) { q("#apResultados").innerHTML = ""; return; }
+      try {
+        const filas = await api("/api/proveedor/catalogo?q=" + encodeURIComponent(texto));
+        if (mio !== turno) return;
+        resultados = filas;
+        q("#apResultados").innerHTML = filas.length
+          ? filas.map((p, i) => '<button type="button" class="catalogo-item" data-i="' + i + '"><b>' + esc(p.producto) + '</b><div class="c-codigo">PLU ' + esc(p.codigo) + (p.presentacion ? " · " + esc(p.presentacion) : "") + "</div></button>").join("")
+          : '<div class="catalogo-item" style="cursor:default">No hay productos con «' + esc(texto) + '» que no tengas ya en tu stock.</div>';
+      } catch (err) {
+        if (mio === turno) q("#apResultados").innerHTML = '<div class="catalogo-item" style="cursor:default">' + esc(err.message) + "</div>";
+      }
+    }
+
+    q("#apBuscar").addEventListener("input", () => { clearTimeout(espera); espera = setTimeout(buscar, 250); });
+    q("#apResultados").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-i]");
+      if (!b) return;
+      elegido = resultados[Number(b.dataset.i)];
+      q("#apElegido").innerHTML = "<b>" + esc(elegido.producto) + '</b><div class="texto-suave">PLU ' + esc(elegido.codigo) + " · Presentación: " + esc(elegido.presentacion || "—") + "</div>";
+      q("#apBusqueda").hidden = true;
+      q("#apForm").hidden = false;
+      error("");
+    });
+    q("#apCambiar").addEventListener("click", () => {
+      elegido = null;
+      q("#apForm").hidden = true;
+      q("#apBusqueda").hidden = false;
+      q("#apBuscar").focus();
+    });
+    m.caja.querySelectorAll("input[name=apTipo]").forEach((r) => r.addEventListener("change", () => {
+      const temporal = q("input[name=apTipo]:checked").value === "temporal";
+      q("#apHastaCaja").hidden = !temporal;
+      q("#apHasta").required = temporal;
+      if (temporal) q("#apHasta").focus();
+    }));
+    q("#apForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const tipo = q("input[name=apTipo]:checked").value;
+      const hasta = tipo === "temporal" ? q("#apHasta").value : null;
+      if (tipo === "temporal" && !hasta) { error("Indica hasta qué fecha tendrás el producto."); return; }
+      const boton = q("button[type=submit]");
+      boton.disabled = true;
+      try {
+        const r = await api("/api/proveedor/productos", { method: "POST", json: { codigo: elegido.codigo, tipo, hasta } });
+        m.cerrar();
+        toast(r.producto + " quedó en tu stock" + (r.en_solicitud ? ". Ya puedes cotizarlo en la solicitud abierta." : "."));
+        await cargar();
+      } catch (err) {
+        error(err.message);
+        boton.disabled = false;
+      }
+    });
+  }
+
   // ---------- Eventos ----------
   document.addEventListener("click", (e) => {
     const sec = e.target.closest("[data-seccion]");
     if (sec) { irA(sec.dataset.seccion); return; }
+    if (e.target.closest("[data-agregar-producto]")) { abrirAgregarProducto(); return; }
     const ir = e.target.closest("[data-ir]");
     if (ir) { e.preventDefault(); irA(ir.dataset.ir); return; }
     const env = e.target.closest("[data-enviar]");

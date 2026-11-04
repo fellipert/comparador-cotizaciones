@@ -9,6 +9,8 @@ const db = require("./db");
 const auth = require("./auth");
 const notificaciones = require("./notificaciones");
 const subastas = require("./subastas");
+const negociacionHoja = require("./negociacion_hoja");
+const automatizacion = require("./automatizacion");
 const { requireAdmin, requireRol, requireSesion } = auth;
 const { parseWorkbook } = require("./parser");
 const ExcelJS = require("exceljs");
@@ -78,7 +80,7 @@ app.use((req, res, next) => {
 });
 
 require("./ordenes_compra")(app, requireAdmin, requireRol("admin", "planeacion"));
-require("./negociacion_hoja")(app, requireAdmin);
+negociacionHoja(app, requireAdmin);
 require("./promociones")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c), computeComparativo: (...a) => computeComparativo(...a) });
 require("./mas_caros")(app, requireAdmin, { getAllQuotes: (c) => getAllQuotes(c) });
 const BANNER_PRUEBAS = `(function () {
@@ -379,7 +381,11 @@ function obtenerOCrearCicloPorSemana(anio, semana) {
       !db.prepare("SELECT 1 FROM quotes WHERE ciclo_id = ? LIMIT 1").get(codigo) &&
       !db.prepare("SELECT 1 FROM subastas WHERE ciclo_id = ? LIMIT 1").get(codigo);
 
-    if (sinUso && ciclo.fecha_inicio_recepcion !== ventana.fecha_inicio_recepcion) {
+    const otroCalendario =
+      ciclo.fecha_inicio_recepcion !== ventana.fecha_inicio_recepcion ||
+      ciclo.fecha_fin_recepcion !== ventana.fecha_fin_recepcion;
+
+    if (sinUso && otroCalendario) {
       db.prepare(`
         UPDATE ciclos
         SET fecha_inicio_recepcion = ?,
@@ -909,7 +915,8 @@ app.post("/api/proveedor-productos", (req, res) => {
     VALUES (?, ?, ?, ?, ?, 1, ?)
     ON CONFLICT(proveedor, codigo) DO UPDATE SET
       tipo = excluded.tipo, actualizado_en = excluded.actualizado_en, contrapropuesta_manual = excluded.contrapropuesta_manual,
-      activo = 1, frecuencia = excluded.frecuencia
+      activo = 1, frecuencia = excluded.frecuencia,
+      disponible_hasta = CASE WHEN excluded.tipo = 'habitual' THEN NULL ELSE proveedor_productos.disponible_hasta END
   `).run(prov, cod, tipoFinal, new Date().toISOString(), contrapropuestaManual, frecuenciaFinal);
 
   const precioNum = Number(precio);
@@ -1006,7 +1013,8 @@ app.post("/api/onboarding/importar", upload.single("archivo"), (req, res) => {
     const upsertPP = db.prepare(`
       INSERT INTO proveedor_productos (proveedor, codigo, tipo, actualizado_en, activo, frecuencia)
       VALUES (?, ?, ?, ?, 1, ?)
-      ON CONFLICT(proveedor, codigo) DO UPDATE SET tipo = excluded.tipo, frecuencia = excluded.frecuencia, actualizado_en = excluded.actualizado_en
+      ON CONFLICT(proveedor, codigo) DO UPDATE SET tipo = excluded.tipo, frecuencia = excluded.frecuencia, actualizado_en = excluded.actualizado_en,
+        disponible_hasta = CASE WHEN excluded.tipo = 'habitual' THEN NULL ELSE proveedor_productos.disponible_hasta END
     `);
     const upsertProv = db.prepare("INSERT OR IGNORE INTO proveedores (nombre, creado_en) VALUES (?, ?)");
 
@@ -1315,7 +1323,7 @@ app.post("/api/proveedor-productos/marcar-habituales", (req, res) => {
   const stmt = db.prepare(`
     INSERT INTO proveedor_productos (proveedor, codigo, tipo, actualizado_en, activo, frecuencia)
     VALUES (?, ?, 'habitual', ?, 1, 'diario')
-    ON CONFLICT(proveedor, codigo) DO UPDATE SET tipo = 'habitual', actualizado_en = excluded.actualizado_en
+    ON CONFLICT(proveedor, codigo) DO UPDATE SET tipo = 'habitual', actualizado_en = excluded.actualizado_en, disponible_hasta = NULL
   `);
   const marcar = db.transaction((cods) => { cods.forEach((c) => stmt.run(prov, c, ahora)); });
   marcar(codigos);
@@ -5087,6 +5095,105 @@ app.get("/api/proveedores/lista", (req, res) => {
   res.json(rows);
 });
 
+// Excel con los proveedores de la base: hoja "Proveedores" (NIT, cuenta del portal) y hoja "Productos"
+// (mismas primeras columnas que Historico_Compras_Fruver.xlsx: NIT Proveedor, Proveedor, PLU, Descripción)
+app.get("/api/proveedores/excel", requireAdmin, async (req, res) => {
+  try {
+    const conPresentacion = db.prepare("PRAGMA table_info(proveedor_productos)").all().some((c) => c.name === "presentacion_proveedor");
+    const proveedores = db.prepare(`
+      SELECT p.nombre, COALESCE(p.nit, '') AS nit, p.creado_en,
+        (SELECT COUNT(*) FROM proveedor_productos pp WHERE pp.proveedor = p.nombre AND pp.activo = 1) AS productos,
+        (SELECT COUNT(*) FROM proveedor_productos pp WHERE pp.proveedor = p.nombre AND pp.activo = 1 AND pp.tipo = 'habitual') AS fijos
+      FROM proveedores p ORDER BY p.nombre COLLATE NOCASE
+    `).all();
+    const cuentas = new Map();
+    db.prepare("SELECT proveedor_nombre, usuario, email, estado, ultimo_acceso FROM usuarios WHERE tipo = 'proveedor' AND proveedor_nombre IS NOT NULL ORDER BY id")
+      .all().forEach((u) => {
+        if (!cuentas.has(u.proveedor_nombre)) cuentas.set(u.proveedor_nombre, []);
+        cuentas.get(u.proveedor_nombre).push(u);
+      });
+    const productos = db.prepare(`
+      SELECT p.nombre AS proveedor, COALESCE(p.nit, '') AS nit, pp.codigo, COALESCE(c.producto, '') AS producto,
+        ${conPresentacion ? "COALESCE(pp.presentacion_proveedor, c.presentacion, '')" : "COALESCE(c.presentacion, '')"} AS presentacion,
+        pp.tipo, pp.frecuencia, pp.disponible_hasta
+      FROM proveedor_productos pp
+      JOIN proveedores p ON p.nombre = pp.proveedor
+      LEFT JOIN catalogo c ON c.codigo = pp.codigo
+      WHERE pp.activo = 1
+      ORDER BY p.nombre COLLATE NOCASE, c.producto COLLATE NOCASE, pp.codigo
+    `).all();
+
+    const fechaHora = (iso) => (iso ? new Date(iso).toLocaleString("es-CO", { timeZone: "America/Bogota", dateStyle: "short", timeStyle: "short" }) : "");
+    const ESTADO_CUENTA = { activo: "Activa", inactivo: "Inactiva", pendiente: "Pendiente de aprobación", rechazado: "Rechazada" };
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Comparador de Cotizaciones Mercaldas";
+
+    const h1 = wb.addWorksheet("Proveedores");
+    h1.columns = [
+      { header: "NIT Proveedor", key: "nit", width: 16 },
+      { header: "Proveedor", key: "nombre", width: 46 },
+      { header: "Productos activos", key: "productos", width: 12 },
+      { header: "Fijos", key: "fijos", width: 8 },
+      { header: "Temporales", key: "temporales", width: 11 },
+      { header: "Usuario del portal", key: "usuario", width: 30 },
+      { header: "Correo", key: "email", width: 32 },
+      { header: "Estado de la cuenta", key: "estado", width: 18 },
+      { header: "Último ingreso", key: "ultimo", width: 18 },
+      { header: "Registrado en el sistema", key: "creado", width: 18 },
+    ];
+    proveedores.forEach((p) => {
+      const us = cuentas.get(p.nombre) || [];
+      h1.addRow({
+        nit: p.nit, nombre: p.nombre, productos: p.productos, fijos: p.fijos, temporales: p.productos - p.fijos,
+        usuario: us.length ? us.map((u) => u.usuario).join(", ") : "Sin cuenta",
+        email: us.map((u) => u.email).filter(Boolean).join(", "),
+        estado: us.map((u) => ESTADO_CUENTA[u.estado] || u.estado).join(", "),
+        ultimo: us.map((u) => fechaHora(u.ultimo_acceso)).filter(Boolean).join(", "),
+        creado: fechaHora(p.creado_en),
+      });
+    });
+
+    const h2 = wb.addWorksheet("Productos");
+    h2.columns = [
+      { header: "NIT Proveedor", key: "nit", width: 16 },
+      { header: "Proveedor", key: "proveedor", width: 46 },
+      { header: "PLU", key: "codigo", width: 10 },
+      { header: "Descripción", key: "producto", width: 40 },
+      { header: "Presentación", key: "presentacion", width: 16 },
+      { header: "Tipo", key: "tipo", width: 11 },
+      { header: "Frecuencia", key: "frecuencia", width: 11 },
+      { header: "Temporal hasta", key: "hasta", width: 14 },
+    ];
+    productos.forEach((r) => h2.addRow({
+      nit: r.nit, proveedor: r.proveedor, codigo: String(r.codigo), producto: r.producto, presentacion: r.presentacion,
+      tipo: r.tipo === "habitual" ? "Fijo" : "Temporal", frecuencia: r.frecuencia === "diario" ? "Diario" : "Semanal",
+      hasta: r.disponible_hasta || "",
+    }));
+
+    [h1, h2].forEach((ws) => {
+      const cab = ws.getRow(1);
+      cab.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cab.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF02672F" } };
+      cab.alignment = { vertical: "middle", wrapText: true };
+      cab.height = 30;
+      ws.getColumn(1).numFmt = "@";
+      ws.views = [{ state: "frozen", ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } };
+    });
+    h2.getColumn(3).numFmt = "@";
+
+    auth.bitacora(req, "proveedores_descargados", proveedores.length + " proveedores y " + productos.length + " productos");
+    const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+    const buf = await wb.xlsx.writeBuffer();
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="Proveedores_Mercaldas_' + hoy + '.xlsx"');
+    res.send(Buffer.from(buf));
+  } catch (e) {
+    console.error("[PROVEEDORES EXCEL]", e);
+    res.status(500).json({ error: "No se pudo generar el Excel de proveedores." });
+  }
+});
+
 app.post("/api/proveedores", (req, res) => {
   const { nombre } = req.body || {};
   const nom = nombre ? String(nombre).trim().toUpperCase() : "";
@@ -5112,16 +5219,42 @@ app.put("/api/proveedores/:nombre", (req, res) => {
     if (choque) return res.status(409).json({ error: "Ya existe un proveedor con ese nombre nuevo." });
   }
 
-  const renombrar = db.transaction(() => {
-    db.prepare("UPDATE proveedores SET nombre = ? WHERE nombre = ?").run(nuevo, nombreActual);
-    db.prepare("UPDATE quotes SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
-    db.prepare("UPDATE proveedor_productos SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
-    db.prepare("UPDATE files SET proveedor = ? WHERE proveedor = ?").run(nuevo, nombreActual);
-  });
-  renombrar();
+  if (nuevo === nombreActual) return res.json({ ok: true, nombre: nuevo, filas: 0 });
 
-  res.json({ ok: true, nombre: nuevo });
+  // El nombre se cambia en TODAS las tablas que lo guardan (cotizaciones, productos, usuarios del portal,
+  // negociaciones, solicitudes, pedidos y órdenes), para que el proveedor conserve su acceso y su historia.
+  const columnas = columnasConNombreDeProveedor();
+  try {
+    const filas = db.transaction(() => {
+      db.prepare("UPDATE proveedores SET nombre = ? WHERE nombre = ?").run(nuevo, nombreActual);
+      let total = 0;
+      for (const [tabla, col] of columnas) {
+        total += db.prepare('UPDATE "' + tabla + '" SET "' + col + '" = ? WHERE "' + col + '" = ?').run(nuevo, nombreActual).changes;
+      }
+      return total;
+    })();
+    auth.bitacora(req, "proveedor_renombrado", nombreActual + " → " + nuevo + " (" + filas + " registros)");
+    res.json({ ok: true, nombre: nuevo, filas });
+  } catch (e) {
+    if (e && /UNIQUE|PRIMARY KEY/i.test(String(e.code) + " " + e.message)) {
+      return res.status(409).json({ error: "Ya hay datos guardados con el nombre «" + nuevo + "» (de un proveedor que se eliminó). Usa otro nombre." });
+    }
+    console.error("[RENOMBRAR PROVEEDOR]", e);
+    res.status(500).json({ error: "No se pudo cambiar el nombre del proveedor." });
+  }
 });
+
+// Tablas y columnas que guardan el nombre del proveedor (se buscan en la base para no olvidar ninguna)
+function columnasConNombreDeProveedor() {
+  const lista = [];
+  for (const t of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()) {
+    if (t.name === "proveedores") continue;
+    for (const c of db.prepare('PRAGMA table_info("' + t.name + '")').all()) {
+      if (c.name === "proveedor" || c.name === "proveedor_nombre") lista.push([t.name, c.name]);
+    }
+  }
+  return lista;
+}
 
 app.delete("/api/proveedores/:nombre", (req, res) => {
 
@@ -5191,16 +5324,18 @@ app.get("/api/por-proveedor", (req, res) => {
   const quotes = getAllQuotes(req.query.ciclo);
   let items = computeVistaProveedor(quotes, proveedor, pct);
 
-  const asociados = db.prepare("SELECT codigo, tipo, contrapropuesta_manual, activo, frecuencia FROM proveedor_productos WHERE proveedor = ?").all(proveedor);
+  const asociados = db.prepare("SELECT codigo, tipo, contrapropuesta_manual, activo, frecuencia, disponible_hasta FROM proveedor_productos WHERE proveedor = ?").all(proveedor);
   const tipoPorCodigo = {};
   const manualPorCodigo = {};
   const activoPorCodigo = {};
   const frecuenciaPorCodigo = {};
+  const hastaPorCodigo = {};
   asociados.forEach((a) => {
     tipoPorCodigo[a.codigo] = a.tipo;
     manualPorCodigo[a.codigo] = a.contrapropuesta_manual;
     activoPorCodigo[a.codigo] = a.activo;
     frecuenciaPorCodigo[a.codigo] = a.frecuencia || "diario";
+    hastaPorCodigo[a.codigo] = a.disponible_hasta || null;
   });
 
   const ultimaFechaPorCodigo = {};
@@ -5228,6 +5363,7 @@ app.get("/api/por-proveedor", (req, res) => {
 
   items.forEach((it) => {
     it.tipo = tipoPorCodigo[it.codigo] || null;
+    it.disponibleHasta = hastaPorCodigo[it.codigo] || null;
     it.frecuencia = frecuenciaPorCodigo[it.codigo] || "diario";
     if (it.frecuencia === "semanal" && ultimaFechaPorCodigo[it.codigo]) {
       it.semanaVigencia = calcularSemanaVigencia(ultimaFechaPorCodigo[it.codigo]);
@@ -5266,6 +5402,7 @@ app.get("/api/por-proveedor", (req, res) => {
         redondeada: manual !== undefined && manual !== null ? manual : (global ? global.redondeada : null),
         contrapropuestaEsManual: manual !== undefined && manual !== null,
         tipo: a.tipo,
+        disponibleHasta: a.disponible_hasta || null,
         frecuencia: a.frecuencia || "diario",
         semanaVigencia: null,
         sinCotizarEstaSemana: true,
@@ -6973,218 +7110,25 @@ app.post(
       // Aplicar la misma lógica actual del comparativo
       // ======================================================
 
+      // La contrapropuesta es la misma que calcula el sistema: el precio más bajo de la semana
+      // menos el % de contrapropuesta, redondeado hacia abajo a la centena (ver negociacion_hoja.js).
       const pct =
         getContrapropuestaPct();
 
+      const items =
+        negociacionHoja.itemsContrapropuesta(quotes, proveedor, pct);
 
-      const vistaProveedor =
-        computeVistaProveedor(
-          quotes,
-          proveedor,
-          pct
-        );
-
-
-      if (!vistaProveedor.length) {
-
+      if (!items.length) {
         return res.status(404).json({
           error:
             "Este proveedor no tiene cotizaciones en el ciclo seleccionado."
         });
       }
 
-
-      const ahora =
-        new Date().toISOString();
-
-
-      const crear =
-        db.transaction(() => {
-
-
-          // ==================================================
-          // CABECERA
-          // ==================================================
-
-          const resultado =
-            db.prepare(`
-              INSERT INTO negociaciones_unificadas (
-                ciclo_id,
-                proveedor,
-                estado,
-                ronda_actual,
-                creado_en,
-                actualizado_en
-              )
-              VALUES (
-                ?,
-                ?,
-                'abierta',
-                2,
-                ?,
-                ?
-              )
-            `).run(
-              ciclo,
-              proveedor,
-              ahora,
-              ahora
-            );
-
-
-          const negociacionId =
-            Number(
-              resultado.lastInsertRowid
-            );
-
-
-          // ==================================================
-          // PRODUCTOS
-          // ==================================================
-
-          const insertarProducto =
-            db.prepare(`
-              INSERT INTO negociacion_unificada_productos (
-                negociacion_id,
-                codigo,
-                producto,
-                presentacion,
-                propuesta_inicial,
-                contrapropuesta_mercaldas,
-                propuesta_final_proveedor,
-                precio_final,
-                estado,
-                observacion,
-                creado_en,
-                actualizado_en
-              )
-              VALUES (
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                NULL,
-                NULL,
-                'pendiente',
-                NULL,
-                ?,
-                ?
-              )
-            `);
-
-
-          const insertarHistorial =
-            db.prepare(`
-              INSERT INTO negociacion_unificada_historial (
-                negociacion_id,
-                codigo,
-                ronda,
-                origen,
-                precio,
-                estado,
-                observacion,
-                creado_en
-              )
-              VALUES (
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?
-              )
-            `);
-
-
-          vistaProveedor.forEach(it => {
-
-            const inicial =
-              it.precioProveedor !== null &&
-              it.precioProveedor !== undefined
-                ? Number(
-                    it.precioProveedor
-                  )
-                : null;
-
-
-            // Usamos la contrapropuesta que ya calcula
-            // actualmente la plataforma.
-            //
-            // Si existe la versión redondeada,
-            // esa tiene prioridad.
-            const contrapropuesta =
-              it.redondeada !== null &&
-              it.redondeada !== undefined
-                ? Number(
-                    it.redondeada
-                  )
-                : (
-                    it.contrapropuesta !== null &&
-                    it.contrapropuesta !== undefined
-                      ? Number(
-                          it.contrapropuesta
-                        )
-                      : null
-                  );
-
-
-            insertarProducto.run(
-              negociacionId,
-              String(it.codigo),
-              it.producto || "",
-              it.presentacion || "",
-              inicial,
-              contrapropuesta,
-              ahora,
-              ahora
-            );
-
-
-            // ================================================
-            // RONDA 1 - PROPUESTA INICIAL PROVEEDOR
-            // ================================================
-
-            insertarHistorial.run(
-              negociacionId,
-              String(it.codigo),
-              1,
-              "PROVEEDOR",
-              inicial,
-              "propuesta_inicial",
-              "Cotización inicial del proveedor.",
-              ahora
-            );
-
-
-            // ================================================
-            // RONDA 2 - CONTRAPROPUESTA MERCALDAS
-            // ================================================
-
-            insertarHistorial.run(
-              negociacionId,
-              String(it.codigo),
-              2,
-              "MERCALDAS",
-              contrapropuesta,
-              "contrapropuesta",
-              "Contrapropuesta generada por Mercaldas.",
-              ahora
-            );
-
-          });
-
-
-          return negociacionId;
-
-        });
-
-
       const negociacionId =
-        crear();
+        db.transaction(() =>
+          negociacionHoja.crearNegociacion(ciclo, proveedor, items)
+        )();
 
 
       const productos =
@@ -7234,6 +7178,12 @@ app.post(
   }
 );
 
+
+// Viernes 6:00 a.m. abre la semana y envía la solicitud; de viernes a lunes a las 7:00 p.m. salen las contrapropuestas
+automatizacion.iniciar({
+  cicloActivo: () => obtenerCicloActivo(),
+  cicloDeVentana: (v) => obtenerOCrearCicloPorSemana(v.anio, v.semana_calendario),
+});
 
 app.listen(PORT, () => {
   console.log(`Comparador de Cotizaciones escuchando en el puerto ${PORT}`);

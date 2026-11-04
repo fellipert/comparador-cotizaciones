@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  // El servidor deja aquí quién inició sesión (ver auth.js). Planeación de la demanda solo usa Pedidos y Órdenes de compra.
+  // El servidor deja aquí quién inició sesión (ver auth.js). Planeación de la demanda solo usa Productos en subasta y Pedidos.
   const USUARIO = window.__USUARIO || {};
   const ES_PLANEACION = USUARIO.tipo === "planeacion";
 
@@ -1003,7 +1003,8 @@
       "¿Abrir el ciclo " + codigo + "?\n\n" +
       "Las nuevas cotizaciones quedarán guardadas en esta semana.\n" +
       "Se enviará a todos los proveedores la solicitud de cotización de sus productos (aviso y correo), " +
-      "con plazo hasta el martes a las 12:00 m."
+      "con plazo hasta el lunes a las 7:00 p.m. Si la abres antes del viernes a las 6:00 a.m., la solicitud sale sola a esa hora.\n" +
+      "De viernes a lunes, a las 7:00 p.m., cada proveedor recibe sola la contrapropuesta de lo que cotizó."
     )) {
       return;
     }
@@ -1583,7 +1584,8 @@
       else if (it.esUnico) estado = "Proveedor único";
       else if (it.esElMinimo) estado = "✓ Ya es el más barato";
       else estado = "Negociar con " + it.proveedorMinimo;
-      const tipoTxt = it.tipo === "habitual" ? "Habitual" : (it.tipo === "adicional" ? "Adicional" : "—");
+      const tipoTxt = (it.tipo === "habitual" ? "Habitual" : (it.tipo === "adicional" ? "Adicional" : "—")) +
+        (it.disponibleHasta ? '<div class="cell-sub">Temporal hasta ' + new Date(it.disponibleHasta + "T12:00:00Z").toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "UTC" }) + "</div>" : "");
       const precioTxt = it.precioProveedor !== null ? fmtMoney(it.precioProveedor) : "—";
       const contraTxt = fmtMoney(it.redondeada) + (it.contrapropuestaEsManual ? ' <span class="cell-sub" style="display:inline;">(manual)</span>' : "");
       const frecuenciaTxt = it.frecuencia === "semanal"
@@ -2116,6 +2118,11 @@
       "</tr>"
     ).join("") : '<tr><td colspan="2" style="text-align:center;padding:20px;color:var(--ink-soft)">Sin proveedores registrados todavía.</td></tr>';
   }
+
+  // Excel con todos los proveedores de la base (hojas Proveedores y Productos)
+  document.getElementById("btnDescargarProveedores").addEventListener("click", () => {
+    window.location.href = "/api/proveedores/excel";
+  });
 
   document.getElementById("btnNuevoProveedor").addEventListener("click", () => {
     provModoEdicion = null;
@@ -6222,7 +6229,11 @@
         ? '<div class="hn-row" style="margin-bottom:10px"><span class="hn-b hn-ok">✓ Enviada al portal ' + hnEsc(cuandoPortal) + "</span>" +
           '<span class="hn-sub" style="margin:0">El proveedor la ve en su portal y responde allí; su respuesta queda como precio final.</span></div>'
         : '<div class="hn-row" style="margin-bottom:10px"><button class="hn-btn p" data-hn="portal">Enviar contrapropuesta al portal del proveedor</button>' +
-          '<span class="hn-sub" style="margin:0">Le llega un aviso y un correo, y responde sin Excel.</span></div>';
+          '<span class="hn-sub" style="margin:0">Le llega un aviso y un correo, y responde sin Excel.' +
+          (portal.envio_automatico
+            ? " Si no la envías antes, sale sola el " + hnEsc(new Date(portal.envio_automatico).toLocaleString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }))
+            : "") +
+          "</span></div>";
     const barraEdicion = '<div class="hn-card"><div class="hn-row"><b>Modo edición:</b> escribe el precio final acordado en cada producto y pulsa Guardar.' +
       '<input id="hnNota" type="text" maxlength="300" placeholder="Nota (opcional): ej. acordado por teléfono con Juan" style="flex:1;min-width:260px;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +
       '<button class="hn-btn p" data-hn="guardarpf">Guardar precios</button><button class="hn-btn" data-hn="cancelarpf">Cancelar</button></div>' +

@@ -245,7 +245,7 @@ td.envuelve { white-space: normal; }
 td .fila-acciones { flex-wrap: nowrap; }
 .zona-riesgo { border-color: var(--warn); }
 
-/* Planeación de la demanda: solo Pedidos, Órdenes de compra y el resumen de subasta, sin precios por proveedor */
+/* Planeación de la demanda: solo Pedidos y el resumen de subasta, sin precios por proveedor (el menú Órdenes de compra es del admin) */
 body.rol-planeacion .solo-admin,
 body.rol-planeacion #tab-cargar,
 body.rol-planeacion nav.tabs button:not([data-roles~="planeacion"]),

@@ -4,6 +4,8 @@ const multer = require("multer");
 const db = require("./db");
 const correo = require("./correo");
 const notificaciones = require("./notificaciones");
+const cal = require("./calendario");
+const { computeVistaProveedor } = require("./analytics");
 const { leerRespuesta, validar, alertasContrapropuesta } = require("./negociacion_lector");
 
 // Numeración del historial (la misma que ya usa "iniciar"): 1 = cotización del proveedor,
@@ -114,11 +116,14 @@ function armarHoja(neg) {
   const esperando = filas.filter((f) => f.estado === "abierto" && f.turno === "proveedor");
   const rondaPendiente = esperando.length ? Math.max(...esperando.map((f) => f.ultimaRonda)) : null;
   const pub = rondaPublicada(neg.id);
+  const publicado = !!(rondaPendiente && pub && pub.ronda >= rondaPendiente);
   const portal = {
     ronda_pendiente: rondaPendiente,
-    publicado: !!(rondaPendiente && pub && pub.ronda >= rondaPendiente),
+    publicado,
     publicado_en: pub ? pub.publicado_en : null,
     por_responder: pub ? esperando.filter((f) => f.ultimaRonda <= pub.ronda).length : 0,
+    // Si nadie la envía antes, sale sola a esta hora (7:00 p.m. de los días de recepción)
+    envio_automatico: rondaPendiente && !publicado ? cal.proximoCorte(neg.ciclo_id) : null,
   };
   return {
     negociacion: { id: neg.id, ciclo: neg.ciclo_id, proveedor: neg.proveedor, estado: neg.estado, ronda_visible: Math.max(1, Math.floor(maxRonda / 2)), max_rondas: MAX_RONDAS, portal },
@@ -145,6 +150,115 @@ function sincronizarCabecera(negId) {
   if (cols.has("cerrado_en")) { set.push("cerrado_en = ?"); vals.push(abiertos === 0 && h.productos.length ? neg.cerrado_en || ahora() : null); }
   if (cols.has("actualizado_en")) { set.push("actualizado_en = ?"); vals.push(ahora()); }
   db.prepare("UPDATE negociaciones_unificadas SET " + set.join(", ") + " WHERE id = ?").run(...vals, negId);
+}
+
+// ---------- Contrapropuesta del sistema: precio más bajo de la semana menos el % que fija el admin ----------
+function pctContrapropuesta() {
+  const fila = db.prepare("SELECT value FROM settings WHERE key = 'contrapropuesta_pct'").get();
+  const n = fila ? Number(fila.value) : NaN;
+  return Number.isFinite(n) ? n : 2;
+}
+
+// Un ítem por PLU que cotizó el proveedor: su precio y la contrapropuesta (redondeada hacia abajo a la centena)
+function itemsContrapropuesta(quotes, proveedor, pct = pctContrapropuesta()) {
+  return computeVistaProveedor(quotes, proveedor, pct).map((it) => {
+    const exacta = it.contrapropuesta != null ? Number(it.contrapropuesta) : null;
+    const redondeada = it.redondeada != null ? Number(it.redondeada) : null;
+    return {
+      codigo: String(it.codigo), producto: it.producto || "", presentacion: it.presentacion || "",
+      inicial: it.precioProveedor != null ? Number(it.precioProveedor) : null,
+      contra: redondeada > 0 ? redondeada : exacta > 0 ? Math.floor(exacta) : null,
+    };
+  });
+}
+
+function insertarFila(tabla, campos) {
+  const cols = columnasDe(tabla);
+  const usar = Object.keys(campos).filter((c) => cols.has(c));
+  return db.prepare("INSERT INTO " + tabla + " (" + usar.join(",") + ") VALUES (" + usar.map(() => "?").join(",") + ")").run(...usar.map((c) => campos[c]));
+}
+
+// Ronda 1 = cotización del proveedor; ronda 2 = contrapropuesta de Mercaldas (va dentro de una transacción)
+function sumarProductos(negId, items, observacion) {
+  const t = ahora();
+  for (const it of items) {
+    insertarFila("negociacion_unificada_productos", {
+      negociacion_id: negId, codigo: it.codigo, producto: it.producto, presentacion: it.presentacion,
+      propuesta_inicial: it.inicial, contrapropuesta_mercaldas: it.contra, propuesta_final_proveedor: null, precio_final: null,
+      estado: "pendiente", observacion: null, creado_en: t, actualizado_en: t,
+    });
+    insertarHistorial(negId, it.codigo, 1, "PROVEEDOR", it.inicial, "propuesta_inicial", "Cotización inicial del proveedor.");
+    insertarHistorial(negId, it.codigo, 2, "MERCALDAS", it.contra, "contrapropuesta", observacion || "Contrapropuesta generada por Mercaldas.");
+  }
+}
+
+function crearNegociacion(cicloId, proveedor, items, observacion) {
+  const t = ahora();
+  const r = insertarFila("negociaciones_unificadas", { ciclo_id: cicloId, proveedor, estado: "abierta", ronda_actual: 2, creado_en: t, actualizado_en: t });
+  const id = Number(r.lastInsertRowid);
+  sumarProductos(id, items, observacion);
+  return id;
+}
+
+// PLU que el proveedor ya ve en su portal esperando respuesta
+function visiblesEnPortal(neg) {
+  const pub = rondaPublicada(neg.id);
+  if (!pub) return new Set();
+  return new Set(armarHoja(neg).productos
+    .filter((p) => p.estado === "abierto" && p.turno === "proveedor" && p.ultimaRonda <= pub.ronda).map((p) => String(p.codigo)));
+}
+
+// Publica en el portal lo que espera la respuesta del proveedor y aún no veía, y le avisa (campana y correo)
+function publicarEnPortal(neg, publicadoPor, yaVisibles) {
+  const antes = yaVisibles || visiblesEnPortal(neg);
+  const h = armarHoja(neg);
+  const pend = pendientesDeProveedor(h);
+  if (!pend) return { productos: 0, usuarios: 0, correos: 0 };
+  const nuevos = h.productos.filter((p) => p.estado === "abierto" && p.turno === "proveedor" && !antes.has(String(p.codigo)));
+  if (!nuevos.length) return { productos: 0, usuarios: 0, correos: 0 };
+  const pub = rondaPublicada(neg.id);
+  db.prepare("INSERT INTO negociacion_publicaciones (negociacion_id, ronda_evento, productos, publicado_en, publicado_por) VALUES (?, ?, ?, ?, ?)")
+    .run(neg.id, Math.max(pend.rondaEvento, pub ? pub.ronda : 0), nuevos.length, ahora(), publicadoPor || null);
+
+  const n = nuevos.length;
+  const usuarios = notificaciones.paraProveedor(neg.proveedor, {
+    tipo: "contrapropuesta",
+    titulo: "Mercaldas te envió una contrapropuesta (" + n + " producto" + (n === 1 ? "" : "s") + ")",
+    mensaje: "Semana " + neg.ciclo_id + ". Acepta, mantén tu precio o propón uno intermedio desde el portal.",
+    enlace: "contrapropuestas",
+  });
+  const correos = usuarios.map((u) => u.email).filter(Boolean);
+  correo.enviar({
+    para: correos,
+    asunto: "Contrapropuesta de Mercaldas · " + neg.ciclo_id,
+    titulo: "Tienes una contrapropuesta de Mercaldas",
+    parrafos: ["Hola, " + neg.proveedor + ".", "Mercaldas revisó tu propuesta de la semana " + neg.ciclo_id + " y te envió una contrapropuesta en " + n + " producto(s).",
+      "Entra al portal para responder: puedes aceptarla, mantener tu precio o proponer uno intermedio. Tu respuesta queda como precio final acordado."],
+    boton: { texto: "Responder en el portal", url: correo.urlApp("/login.html") },
+  });
+  return { productos: n, usuarios: usuarios.length, correos: correos.length };
+}
+
+// Envío automático: suma a la negociación de la semana lo que el proveedor cotizó y aún no se negociaba,
+// con la contrapropuesta del sistema, y publica en su portal todo lo que espera su respuesta.
+function contraproponerAutomatico(cicloId, proveedor, quotes, publicadoPor, observacion) {
+  let neg = db.prepare("SELECT * FROM negociaciones_unificadas WHERE ciclo_id = ? AND proveedor = ?").get(cicloId, proveedor);
+  const yaVisibles = neg ? visiblesEnPortal(neg) : new Set();
+  const enNegociacion = neg
+    ? new Set(db.prepare("SELECT codigo FROM negociacion_unificada_productos WHERE negociacion_id = ?").all(neg.id).map((r) => String(r.codigo)))
+    : new Set();
+  const nuevos = itemsContrapropuesta(quotes, proveedor).filter((i) => !enNegociacion.has(i.codigo) && i.inicial > 0 && i.contra > 0);
+  if (nuevos.length) {
+    const id = db.transaction(() => {
+      const negId = neg ? neg.id : crearNegociacion(cicloId, proveedor, nuevos, observacion);
+      if (neg) sumarProductos(negId, nuevos, observacion);
+      sincronizarCabecera(negId);
+      return negId;
+    })();
+    neg = negociacionPorId(id);
+  }
+  if (!neg) return { agregados: 0, productos: 0, usuarios: 0, correos: 0 };
+  return Object.assign({ agregados: nuevos.length, negociacion_id: neg.id }, publicarEnPortal(neg, publicadoPor, yaVisibles));
 }
 
 // ---------- Importación del Excel de respuesta ----------
@@ -417,29 +531,10 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
     try {
       const neg = negociacionPorId(req.params.id);
       if (!neg) return res.status(404).json({ error: "No existe esa negociación." });
-      const hoja = armarHoja(neg);
-      const pend = pendientesDeProveedor(hoja);
-      if (!pend) return res.status(400).json({ error: "No hay contrapropuestas esperando respuesta del proveedor." });
-      const esperando = hoja.productos.filter((p) => p.estado === "abierto" && p.turno === "proveedor");
-      db.prepare("INSERT INTO negociacion_publicaciones (negociacion_id, ronda_evento, productos, publicado_en, publicado_por) VALUES (?, ?, ?, ?, ?)")
-        .run(neg.id, pend.rondaEvento, esperando.length, new Date().toISOString(), req.usuarioActual ? req.usuarioActual.usuario : null);
-
-      const usuarios = notificaciones.paraProveedor(neg.proveedor, {
-        tipo: "contrapropuesta",
-        titulo: "Mercaldas te envió una contrapropuesta (" + esperando.length + " producto" + (esperando.length === 1 ? "" : "s") + ")",
-        mensaje: "Semana " + neg.ciclo_id + ". Acepta, mantén tu precio o propón uno intermedio desde el portal.",
-        enlace: "contrapropuestas",
-      });
-      const correos = usuarios.map((u) => u.email).filter(Boolean);
-      correo.enviar({
-        para: correos,
-        asunto: "Contrapropuesta de Mercaldas · " + neg.ciclo_id,
-        titulo: "Tienes una contrapropuesta de Mercaldas",
-        parrafos: ["Hola, " + neg.proveedor + ".", "Mercaldas revisó tu propuesta de la semana " + neg.ciclo_id + " y te envió una contrapropuesta en " + esperando.length + " producto(s).",
-          "Entra al portal para responder: puedes aceptarla, mantener tu precio o proponer uno intermedio. Tu respuesta queda como precio final acordado."],
-        boton: { texto: "Responder en el portal", url: correo.urlApp("/login.html") },
-      });
-      res.json({ ok: true, productos: esperando.length, usuarios: usuarios.length, correos: correos.length, hoja: armarHoja(negociacionPorId(neg.id)) });
+      if (!pendientesDeProveedor(armarHoja(neg))) return res.status(400).json({ error: "No hay contrapropuestas esperando respuesta del proveedor." });
+      const r = publicarEnPortal(neg, req.usuarioActual ? req.usuarioActual.usuario : null);
+      if (!r.productos) return res.status(400).json({ error: "La contrapropuesta ya está en el portal del proveedor." });
+      res.json({ ok: true, productos: r.productos, usuarios: r.usuarios, correos: r.correos, hoja: armarHoja(negociacionPorId(neg.id)) });
     } catch (e) {
       console.error("[negociacion_hoja] enviar-portal:", e);
       res.status(500).json({ error: "No se pudo enviar la contrapropuesta al portal." });
@@ -469,4 +564,7 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
 };
 
 // Para el portal del proveedor
-Object.assign(module.exports, { armarHoja, negociacionPorId, aplicarRespuestas, rondaPublicada, esquemaFaltante });
+Object.assign(module.exports, {
+  armarHoja, negociacionPorId, aplicarRespuestas, rondaPublicada, esquemaFaltante,
+  itemsContrapropuesta, crearNegociacion, contraproponerAutomatico, publicarEnPortal, pctContrapropuesta,
+});

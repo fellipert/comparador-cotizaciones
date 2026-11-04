@@ -251,7 +251,9 @@
     usuario_creado: "Usuario creado", usuario_editado: "Usuario editado", usuario_eliminado: "Usuario eliminado", password_asignada: "Contraseña asignada por el admin",
     enlace_enviado: "Enlace de contraseña enviado", usuario_desbloqueado: "Usuario desbloqueado", proveedor_aprobado: "Proveedor aprobado", proveedor_rechazado: "Proveedor rechazado",
     subasta_creada: "Subasta creada", subasta_enviada: "Subasta enviada", subasta_cerrada: "Subasta cerrada", subasta_reabierta: "Subasta reabierta", subasta_eliminada: "Subasta eliminada",
-    oferta_enviada: "Oferta del proveedor", contrapropuesta_respondida: "Respuesta a contrapropuesta",
+    oferta_enviada: "Oferta del proveedor", contrapropuesta_respondida: "Respuesta a contrapropuesta", producto_agregado: "Producto agregado por el proveedor",
+    semana_abierta_automatica: "Semana abierta sola (viernes 6:00 a.m.)", contrapropuestas_automaticas: "Contrapropuestas automáticas (7:00 p.m.)",
+    proveedores_unificados: "Proveedores unificados desde Excel", proveedores_descargados: "Descargó el Excel de proveedores", proveedor_renombrado: "Proveedor renombrado",
   };
 
   async function verBitacora() {

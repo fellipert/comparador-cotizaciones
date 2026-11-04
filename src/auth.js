@@ -1,6 +1,6 @@
 "use strict";
 // Inicio de sesión, recuperación de contraseña por correo, registro de proveedores y permisos por rol.
-// Roles: admin (todo el sistema), planeacion (demanda, distribución, órdenes de compra y resumen de subasta)
+// Roles: admin (todo el sistema), planeacion (demanda, distribución, órdenes de compra desde Pedidos y resumen de subasta)
 // y proveedor (portal: subastas y contrapropuestas de sus productos).
 const crypto = require("crypto");
 const fs = require("fs");
