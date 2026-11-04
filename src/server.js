@@ -5095,6 +5095,37 @@ app.get("/api/proveedores/lista", (req, res) => {
   res.json(rows);
 });
 
+// Respaldo descargable (solo admin): copia consistente de la base, hecha con la app encendida, para guardarla fuera del servidor.
+// Trae los datos completos (incluidas las contraseñas cifradas): se guarda en un lugar seguro.
+app.get("/api/respaldo", requireAdmin, async (req, res) => {
+  const Database = require("better-sqlite3");
+  const carpeta = path.join(path.dirname(db.name), "respaldos");
+  const marca = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Bogota", dateStyle: "short", timeStyle: "short" })
+    .format(new Date()).replace(" ", "_").replace(":", "");
+  const nombre = "comparador_respaldo_" + marca + ".db";
+  const temporal = path.join(carpeta, "descarga_" + crypto.randomBytes(6).toString("hex") + ".db");
+  const borrarTemporal = () => fs.rm(temporal, { force: true }, () => {});
+  try {
+    fs.mkdirSync(carpeta, { recursive: true });
+    await db.backup(temporal);
+    const copia = new Database(temporal, { fileMustExist: true });
+    copia.pragma("journal_mode = DELETE");
+    const integridad = copia.pragma("integrity_check", { simple: true });
+    copia.close();
+    if (integridad !== "ok") throw new Error("la copia no pasó la revisión de integridad: " + integridad);
+    auth.bitacora(req, "respaldo_descargado", nombre + " (" + (fs.statSync(temporal).size / 1048576).toFixed(1) + " MB)");
+    res.set("Cache-Control", "no-store");
+    res.download(temporal, nombre, (err) => {
+      borrarTemporal();
+      if (err && !res.headersSent) res.status(500).json({ error: "No se pudo descargar el respaldo." });
+    });
+  } catch (e) {
+    borrarTemporal();
+    console.error("[RESPALDO DESCARGA]", e);
+    res.status(500).json({ error: "No se pudo generar el respaldo." });
+  }
+});
+
 // Excel con los proveedores de la base: hoja "Proveedores" (NIT, cuenta del portal) y hoja "Productos"
 // (mismas primeras columnas que Historico_Compras_Fruver.xlsx: NIT Proveedor, Proveedor, PLU, Descripción)
 app.get("/api/proveedores/excel", requireAdmin, async (req, res) => {
@@ -7185,6 +7216,8 @@ automatizacion.iniciar({
   cicloDeVentana: (v) => obtenerOCrearCicloPorSemana(v.anio, v.semana_calendario),
 });
 
-app.listen(PORT, () => {
-  console.log(`Comparador de Cotizaciones escuchando en el puerto ${PORT}`);
+// HOST=127.0.0.1 deja la app visible solo dentro del servidor (detrás de Cloudflare Tunnel o de un proxy)
+const HOST = process.env.HOST || undefined;
+app.listen(PORT, HOST, () => {
+  console.log(`Comparador de Cotizaciones escuchando en el puerto ${PORT}` + (HOST ? ` (solo ${HOST})` : ""));
 });

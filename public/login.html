@@ -60,7 +60,8 @@
       </div>
       <button class="btn-primary" type="submit" id="btnLogin">Entrar</button>
       <div class="enlaces">
-        <button type="button" class="link-btn" data-ir="recuperar">¿Olvidaste tu contraseña?</button>
+        <button type="button" class="link-btn" data-ir="recuperar" data-con-correo>¿Olvidaste tu contraseña?</button>
+        <p data-sin-correo style="margin:0;font-size:0.85rem">¿Olvidaste tu contraseña? Comunícate con el administrador de Mercaldas para que te asigne una nueva.</p>
       </div>
       <div class="separador"></div>
       <p style="margin:0 0 10px;text-align:center">¿Eres proveedor de Mercaldas y aún no tienes cuenta?</p>
@@ -115,7 +116,7 @@
     <!-- Registro de proveedor -->
     <form class="paso" id="pasoRegistro" autocomplete="off">
       <h2>Registro de proveedor</h2>
-      <p>Crea tu acceso al portal de proveedores de Mercaldas. Tu cuenta quedará activa cuando Mercaldas la apruebe; te avisaremos por correo.</p>
+      <p>Crea tu acceso al portal de proveedores de Mercaldas. Tu cuenta quedará activa cuando Mercaldas la apruebe<span data-con-correo>; te avisaremos por correo</span>.</p>
       <label for="regEmpresa">Nombre del proveedor (razón social)</label>
       <input class="campo" type="text" id="regEmpresa" maxlength="120" required>
       <div class="dos">
@@ -150,6 +151,10 @@
     const $ = (id) => document.getElementById(id);
     const PASOS = { login: "pasoLogin", recuperar: "pasoRecuperar", restablecer: "pasoRestablecer", cambiar: "pasoCambiar", registro: "pasoRegistro" };
     let token = null;
+
+    // Sin correo (CORREO=0) no hay recuperación por enlace: la contraseña nueva la asigna el administrador
+    const HAY_CORREO = window.__CORREO !== false;
+    document.querySelectorAll(HAY_CORREO ? "[data-sin-correo]" : "[data-con-correo]").forEach((el) => { el.style.display = "none"; });
 
     function mensaje(texto, tipo) {
       const box = $("msgBox");

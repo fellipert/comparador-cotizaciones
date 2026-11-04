@@ -117,6 +117,7 @@ module.exports = function registrarUsuariosAdmin(app) {
     if (!auth.emailValido(email)) return res.status(400).json({ error: "Escribe un correo válido: será el usuario para entrar." });
     if (auth.existeIdentificador(email)) return res.status(409).json({ error: "Ya existe una cuenta con ese correo." });
     if (tipo === "proveedor" && !proveedorExiste(proveedor)) return res.status(400).json({ error: "Elige el proveedor al que pertenece este usuario." });
+    if (invitar && !correo.activo()) return res.status(400).json({ error: "El correo está desactivado: escribe una contraseña inicial." });
     if (!password && !invitar) return res.status(400).json({ error: "Escribe una contraseña inicial o marca «Enviar enlace por correo»." });
     if (password) {
       const error = auth.validarPassword(password, email);
@@ -200,6 +201,7 @@ module.exports = function registrarUsuariosAdmin(app) {
   app.post("/api/usuarios/:id/enlace", soloAdmin, async (req, res) => {
     const u = usuarioPorId(req.params.id);
     if (!u) return res.status(404).json({ error: "El usuario ya no existe." });
+    if (!correo.activo()) return res.status(400).json({ error: "El correo está desactivado: asígnale la contraseña desde aquí." });
     if (!u.email) return res.status(400).json({ error: "Este usuario no tiene correo. Agrégalo primero." });
     if (u.estado !== "activo") return res.status(400).json({ error: "Activa la cuenta antes de enviarle el enlace." });
     const r = await auth.enviarEnlaceContrasena(u, "invitacion");

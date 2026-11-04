@@ -9,6 +9,8 @@
   if (!raiz) return;
 
   const TIPOS = { admin: "Administrador", planeacion: "Planeación de la demanda", proveedor: "Proveedor" };
+  // Sin correo (CORREO=0) no hay invitaciones ni enlaces: el admin asigna la contraseña
+  const HAY_CORREO = window.__CORREO !== false;
   const U = { datos: null, proveedores: [], q: "", tipo: "", estado: "" };
 
   function estadoDe(u) {
@@ -120,7 +122,7 @@
         : "") +
       "</div>" +
       (nuevo
-        ? '<div style="margin-top:14px"><label class="texto-suave"><input type="checkbox" id="fuInvitar"> Enviarle un enlace por correo para que él mismo defina su contraseña</label></div>' +
+        ? '<div style="margin-top:14px' + (HAY_CORREO ? "" : ";display:none") + '"><label class="texto-suave"><input type="checkbox" id="fuInvitar"> Enviarle un enlace por correo para que él mismo defina su contraseña</label></div>' +
           '<div id="fuPassCaja" class="form-grid" style="margin-top:10px"><div><label for="fuPass">Contraseña inicial</label><div class="fila-acciones" style="flex-wrap:nowrap"><input id="fuPass" class="campo" autocomplete="new-password"><button type="button" class="btn-secondary btn-chico" id="fuGenerar">Generar</button></div></div>' +
           '<div style="align-self:end"><label class="texto-suave"><input type="checkbox" id="fuCambiar" checked> Pedir que la cambie al entrar</label></div></div>'
         : "") +
@@ -171,7 +173,7 @@
       '<div class="fila-acciones" style="flex-wrap:nowrap"><input id="fpPass" class="campo" autocomplete="new-password" required><button type="button" class="btn-secondary btn-chico" id="fpGenerar">Generar</button></div>' +
       (esYo ? "" : '<label class="texto-suave" style="display:block;margin-top:10px"><input type="checkbox" id="fpCambiar" checked> Pedir que la cambie al entrar (contraseña temporal)</label>') +
       '<p class="texto-suave" style="margin:10px 0 0">Mínimo 8 caracteres, con letras y números. Se cierran sus sesiones abiertas y se quita el bloqueo, si lo tenía.</p>' +
-      (u.email && u.estado === "activo" && !esYo ? '<div class="nota" style="margin-top:12px">También puedes <a href="#" id="fpEnlace">enviarle un enlace a ' + esc(u.email) + "</a> para que la defina él mismo.</div>" : "") +
+      (HAY_CORREO && u.email && u.estado === "activo" && !esYo ? '<div class="nota" style="margin-top:12px">También puedes <a href="#" id="fpEnlace">enviarle un enlace a ' + esc(u.email) + "</a> para que la defina él mismo.</div>" : "") +
       '<div id="fpError" class="nota error" style="display:none;margin-top:12px"></div>' +
       '<div class="fila-acciones derecha" style="margin-top:16px"><button type="button" class="btn-secondary" data-cerrar>Cancelar</button><button type="submit" class="btn-primary">Guardar contraseña</button></div></form>', { ancho: 460 });
     const $ = (s) => m.caja.querySelector(s);
@@ -234,7 +236,7 @@
   function formularioRechazar(u) {
     const m = modal("Rechazar registro",
       '<p style="margin:0 0 10px">' + esc((u.registro && u.registro.empresa) || u.nombre) + " · " + esc(u.email) + "</p>" +
-      '<label class="etiqueta-campo" for="frMotivo">Motivo (se le envía por correo, opcional)</label><input id="frMotivo" class="campo" maxlength="300">' +
+      '<label class="etiqueta-campo" for="frMotivo">Motivo (' + (HAY_CORREO ? "se le envía por correo, " : "") + 'opcional)</label><input id="frMotivo" class="campo" maxlength="300">' +
       '<div class="fila-acciones derecha" style="margin-top:16px"><button type="button" class="btn-secondary" data-cerrar>Cancelar</button><button type="button" class="btn-primary btn-peligro" id="frOk">Rechazar</button></div>', { ancho: 460 });
     m.caja.querySelector("#frOk").addEventListener("click", async () => {
       try {
@@ -253,7 +255,7 @@
     subasta_creada: "Subasta creada", subasta_enviada: "Subasta enviada", subasta_cerrada: "Subasta cerrada", subasta_reabierta: "Subasta reabierta", subasta_eliminada: "Subasta eliminada",
     oferta_enviada: "Oferta del proveedor", contrapropuesta_respondida: "Respuesta a contrapropuesta", producto_agregado: "Producto agregado por el proveedor",
     semana_abierta_automatica: "Semana abierta sola (viernes 6:00 a.m.)", contrapropuestas_automaticas: "Contrapropuestas automáticas (7:00 p.m.)",
-    proveedores_unificados: "Proveedores unificados desde Excel", proveedores_descargados: "Descargó el Excel de proveedores", proveedor_renombrado: "Proveedor renombrado",
+    proveedores_unificados: "Proveedores unificados desde Excel", proveedores_descargados: "Descargó el Excel de proveedores", proveedor_renombrado: "Proveedor renombrado", ensayos_borrados: "Arranque limpio (ensayos borrados)", respaldo_descargado: "Descargó un respaldo de la base",
   };
 
   async function verBitacora() {

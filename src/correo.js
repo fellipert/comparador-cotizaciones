@@ -61,8 +61,15 @@ function texto(titulo, parrafos, boton) {
   return [titulo, "", ...parrafos, boton && boton.url ? "\n" + boton.texto + ": " + boton.url : ""].join("\n").trim();
 }
 
+// CORREO=0 apaga el correo por completo: Mercaldas avisa solo por la campana del sistema y el administrador
+// asigna las contraseñas (no hay recuperación ni invitaciones por correo). No se envía ni se escribe nada.
+function activo() {
+  return process.env.CORREO !== "0";
+}
+
 // Nunca lanza error: devuelve { ok, motivo }. Quien lo llama no debe esperar a que el correo salga.
 async function enviar({ para, asunto, titulo, parrafos = [], boton = null }) {
+  if (!activo()) return { ok: false, motivo: "correo_apagado" };
   const destinatarios = (Array.isArray(para) ? para : [para]).map((x) => String(x || "").trim()).filter(Boolean);
   if (!destinatarios.length) return { ok: false, motivo: "sin_destinatario" };
   const t = configurado() ? obtenerTransporte() : null;
@@ -90,4 +97,4 @@ async function enviar({ para, asunto, titulo, parrafos = [], boton = null }) {
   }
 }
 
-module.exports = { enviar, configurado, urlApp };
+module.exports = { enviar, configurado, urlApp, activo };

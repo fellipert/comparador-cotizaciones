@@ -63,7 +63,7 @@
     raiz().innerHTML =
       '<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">' +
       '<div><p class="section-title" style="margin:0">Subastas · solicitudes de cotización</p>' +
-      '<p class="texto-suave" style="margin:6px 0 0;max-width:640px">Pide a los proveedores los productos que necesitas. A cada proveedor solo le llegan los productos que tiene parametrizados; recibe un aviso y un correo, y cotiza desde su portal, sin Excel.</p></div>' +
+      '<p class="texto-suave" style="margin:6px 0 0;max-width:640px">Pide a los proveedores los productos que necesitas. A cada proveedor solo le llegan los productos que tiene parametrizados; recibe un aviso' + (window.__CORREO === false ? ' en su portal' : ' y un correo') + ', y cotiza desde su portal, sin Excel.</p></div>' +
       '<div class="fila-acciones"><label class="etiqueta-campo" for="subCiclo" style="margin:0">Semana</label><select id="subCiclo" class="manual-input" style="width:auto">' + opcionesCiclo(S.ciclos, S.ciclo) + "</select>" +
       '<button class="btn-primary" data-sub="nueva">+ Nueva solicitud</button></div></div></div>' +
       (filas

@@ -104,6 +104,8 @@
   const P = { datos: null, seccion: "solicitudes" };
   const SECCIONES = { solicitudes: "secSolicitudes", contrapropuestas: "secContrapropuestas", productos: "secProductos" };
   const MAX_DIAS_TEMPORAL = 366;
+  // Dónde llegan los avisos: con CORREO=0 solo en la campana del portal
+  const DONDE_AVISO = window.__CORREO !== false ? "aquí y a tu correo" : "aquí, en la campana del portal";
 
   const $ = (id) => document.getElementById(id);
   const etiqueta = (e) => { const [t, c] = ESTADOS[e] || [e, "gris"]; return '<span class="etiqueta ' + c + '">' + t + "</span>"; };
@@ -148,7 +150,7 @@
     $("cuentaSolicitudes").textContent = abiertas;
     $("cuentaSolicitudes").classList.toggle("alerta", lista.some((s) => s.puede_ofertar && !s.respondido_en));
     if (!lista.length) {
-      $("secSolicitudes").innerHTML = '<div class="card vacio"><div class="icono">📭</div><b>No tienes solicitudes de cotización abiertas.</b><p class="texto-suave">Cuando Mercaldas pida precio de tus productos, te llegará un aviso aquí y a tu correo.</p></div>';
+      $("secSolicitudes").innerHTML = '<div class="card vacio"><div class="icono">📭</div><b>No tienes solicitudes de cotización abiertas.</b><p class="texto-suave">Cuando Mercaldas pida precio de tus productos, te llegará un aviso ' + DONDE_AVISO + '.</p></div>';
       return;
     }
     $("secSolicitudes").innerHTML = lista.map((s) => {
@@ -229,7 +231,7 @@
     $("cuentaContra").textContent = pendientes;
     $("cuentaContra").classList.toggle("alerta", pendientes > 0);
     if (!lista.length) {
-      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Mercaldas envía las contrapropuestas a las 7:00 p.m. de los días en que la solicitud está abierta (viernes a lunes). Te llegará un aviso aquí y a tu correo.</p></div>';
+      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Mercaldas envía las contrapropuestas a las 7:00 p.m. de los días en que la solicitud está abierta (viernes a lunes). Te llegará un aviso ' + DONDE_AVISO + '.</p></div>';
       return;
     }
     $("secContrapropuestas").innerHTML = lista.map((n) => {

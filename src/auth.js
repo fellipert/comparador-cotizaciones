@@ -249,12 +249,13 @@ function avisarCambioPassword(fila) {
 // ---------- Páginas protegidas ----------
 function enviarPagina(res, archivo, u) {
   let html = fs.readFileSync(path.join(PUBLICO, archivo), "utf8");
+  // Cada página sabe si hay correo (con CORREO=0 se ocultan la recuperación, las invitaciones y los textos de "a tu correo")
+  let previo = "window.__CORREO = " + (correo.activo() ? "true" : "false") + ";";
   if (u) {
-    const datos = JSON.stringify(perfil(u)).replace(/</g, "\\u003c");
-    html = html
-      .replace("<body>", '<body class="rol-' + u.tipo + '">')
-      .replace('<script src="/entorno.js"></script>', "<script>window.__USUARIO = " + datos + ';</script><script src="/entorno.js"></script>');
+    previo += " window.__USUARIO = " + JSON.stringify(perfil(u)).replace(/</g, "\\u003c") + ";";
+    html = html.replace("<body>", '<body class="rol-' + u.tipo + '">');
   }
+  html = html.replace('<script src="/entorno.js"></script>', "<script>" + previo + '</script><script src="/entorno.js"></script>');
   res.set("Cache-Control", "no-store").type("html").send(html);
 }
 
@@ -368,6 +369,9 @@ function registrarRutas(app) {
 
   // Paso 1 de la recuperación: siempre responde lo mismo, exista o no la cuenta
   app.post("/api/auth/recuperar", (req, res) => {
+    if (!correo.activo()) {
+      return res.status(400).json({ error: "La recuperación por correo no está disponible. Comunícate con el administrador de Mercaldas para que te asigne una contraseña nueva." });
+    }
     const ident = limpiar(req.body && (req.body.correo || req.body.usuario), 160);
     if (!ident) return res.status(400).json({ error: "Escribe tu correo o tu usuario." });
     if (!limitar("recuperar-ip:" + req.ip, 8, 15)) return res.status(429).json({ error: "Demasiadas solicitudes. Espera unos minutos." });
@@ -427,7 +431,8 @@ function registrarRutas(app) {
     const error = validarPassword(password, email);
     if (error) return res.status(400).json({ error });
     if (existeIdentificador(email)) {
-      return res.status(409).json({ error: "Ya existe una cuenta con ese correo. Si olvidaste la contraseña, usa «¿Olvidaste tu contraseña?»." });
+      return res.status(409).json({ error: "Ya existe una cuenta con ese correo. Si olvidaste la contraseña, " +
+        (correo.activo() ? "usa «¿Olvidaste tu contraseña?»." : "comunícate con el administrador de Mercaldas.") });
     }
 
     const { salt, hash } = hashNuevo(password);
@@ -463,7 +468,9 @@ function registrarRutas(app) {
       parrafos: ["Hola " + (contacto || empresa) + ".", "Recibimos la solicitud de acceso de " + empresa + " al portal de proveedores de Mercaldas.",
         "Mercaldas revisará tus datos y te avisaremos a este correo cuando tu cuenta quede activa."],
     });
-    res.json({ ok: true, mensaje: "Tu registro quedó pendiente de aprobación. Te avisaremos por correo cuando Mercaldas active tu cuenta." });
+    res.json({ ok: true, mensaje: correo.activo()
+      ? "Tu registro quedó pendiente de aprobación. Te avisaremos por correo cuando Mercaldas active tu cuenta."
+      : "Tu registro quedó pendiente de aprobación. Cuando Mercaldas active tu cuenta podrás entrar con tu correo y tu contraseña." });
   });
 }
 

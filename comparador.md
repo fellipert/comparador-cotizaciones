@@ -76,7 +76,7 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 5. **Pedidos**: demanda de la semana, distribución por porcentajes entre proveedores y pedido por proveedor (con recuadro de proveedores, vista previa y botón de generar OC).
 6. **Órdenes de Compra**: listado de las órdenes emitidas.
 7. **Indicadores de compra**: compra por proveedor (valor, participación, concentración) y evolución de precios (variación contra la semana anterior y tendencia de 6 semanas), con descarga a Excel.
-8. **Configuración**: proveedores (con «Descargar proveedores»: Excel con hoja Proveedores —NIT, productos y cuenta del portal— y hoja Productos —NIT Proveedor, Proveedor, PLU, Descripción, presentación, tipo y frecuencia—, solo admin), catálogo, ciclos y logo.
+8. **Configuración**: proveedores (con «Descargar proveedores»: Excel con hoja Proveedores —NIT, productos y cuenta del portal— y hoja Productos —NIT Proveedor, Proveedor, PLU, Descripción, presentación, tipo y frecuencia—, solo admin), catálogo, ciclos, logo y «Descargar respaldo» (copia completa de la base para guardarla fuera del servidor, solo admin).
 9. **Usuarios**: administración de cuentas y aprobación de proveedores registrados.
 10. **Productos en subasta** (solo Planeación): avance por producto sin datos de proveedores.
 
@@ -104,7 +104,7 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 
 ## Variables de entorno
 
-`PORT`, `DATA_DIR`, `APP_ENV=dev`, `ADMIN_PASSWORD` (solo al crear la base), `APP_URL` (enlaces de los correos), `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `COOKIE_SECURE` (opcional) y `TAREAS_AUTOMATICAS` (las tareas del viernes 6:00 a.m. y de las 7:00 p.m. corren por defecto en producción y quedan apagadas con `APP_ENV=dev`; `1` las enciende y `0` las apaga). Sin SMTP los correos se escriben en el registro del servidor. Ver `.env.example`.
+`PORT`, `HOST` (`127.0.0.1` para escuchar solo dentro del servidor), `DATA_DIR`, `APP_ENV=dev`, `ADMIN_PASSWORD` (solo al crear la base), `APP_URL` (enlaces de los correos), `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CORREO=0` (apaga el correo del todo: avisos solo en la campana, sin recuperación de contraseña ni invitaciones; así está producción), `COOKIE_SECURE` (opcional) y `TAREAS_AUTOMATICAS` (las tareas del viernes 6:00 a.m. y de las 7:00 p.m. corren por defecto en producción y quedan apagadas con `APP_ENV=dev`; `1` las enciende y `0` las apaga). Sin SMTP los correos se escriben en el registro del servidor. Ver `.env.example`.
 
 ## Reglas de negocio importantes
 
@@ -120,7 +120,9 @@ Aplicación web interna para comparar cotizaciones de proveedores de frutas y ve
 
 ## Cómo se entregan los cambios
 
-Los cambios se hacen con scripts Python de parche (en `/tmp`) que:
+**Servidor Windows (comparador.mercaldas-apps.com):** servicio NSSM `ComparadorMercaldas` en el puerto interno 8006, Cloudflare Tunnel, código en `C:\planeacion\prod\comparador-cotizaciones`, Node 20 portátil en `C:\planeacion\prod\node20` (el servidor tiene Node 24 para otras aplicaciones y `node_modules` está compilado para Node 20), datos en `C:\planeacion\prod\datos` y respaldo diario con `scripts/respaldar_base.js`. El paso a paso está en `deploy/windows/LEEME.md` y el instalador en `deploy/windows/instalar-servicio.ps1`.
+
+**Servidor Linux anterior:** los cambios se hacían con scripts Python de parche (en `/tmp`) que:
 
 1. Se aplican primero en DEV (`--probar` hace una prueba sin escribir), con respaldo `.antes_*`, comprobación `node --check` y vuelta atrás automática si algo falla.
 2. Se prueban en DEV (a veces copiando la base de producción a DEV con la API de respaldo de SQLite).
@@ -129,6 +131,8 @@ Los cambios se hacen con scripts Python de parche (en `/tmp`) que:
 Los directorios `node_modules`, `data`, `.git`, `backups`, `assets` y `uploads` no se promueven.
 
 ## Pendientes conocidos
+
+- La app no arranca con una base vacía: `pedido_asignaciones`, `files`, `proveedor_productos` y las tablas de negociación se crearon a mano en el servidor original y el código no las crea. Siempre se despliega con la base existente. Falta escribir su `CREATE TABLE` (también sería el primer paso para pasar a PostgreSQL).
 
 - Configurar `APP_URL` y el SMTP en los servicios de DEV y producción, y correr `npm install` (nueva dependencia `nodemailer`).
 - Agregar el correo a las cuentas antiguas de proveedores (usuario tipo `agro.andes`, sin correo): sin correo no reciben avisos por email ni pueden recuperar la contraseña.

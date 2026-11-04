@@ -1002,7 +1002,7 @@
     if (!confirm(
       "¿Abrir el ciclo " + codigo + "?\n\n" +
       "Las nuevas cotizaciones quedarán guardadas en esta semana.\n" +
-      "Se enviará a todos los proveedores la solicitud de cotización de sus productos (aviso y correo), " +
+      "Se enviará a todos los proveedores la solicitud de cotización de sus productos (aviso" + (window.__CORREO === false ? " en su portal" : " y correo") + "), " +
       "con plazo hasta el lunes a las 7:00 p.m. Si la abres antes del viernes a las 6:00 a.m., la solicitud sale sola a esa hora.\n" +
       "De viernes a lunes, a las 7:00 p.m., cada proveedor recibe sola la contrapropuesta de lo que cotizó."
     )) {
@@ -2122,6 +2122,11 @@
   // Excel con todos los proveedores de la base (hojas Proveedores y Productos)
   document.getElementById("btnDescargarProveedores").addEventListener("click", () => {
     window.location.href = "/api/proveedores/excel";
+  });
+
+  // Copia completa de la base para guardarla fuera del servidor
+  document.getElementById("btnDescargarRespaldo").addEventListener("click", () => {
+    window.location.href = "/api/respaldo";
   });
 
   document.getElementById("btnNuevoProveedor").addEventListener("click", () => {
@@ -6229,7 +6234,7 @@
         ? '<div class="hn-row" style="margin-bottom:10px"><span class="hn-b hn-ok">✓ Enviada al portal ' + hnEsc(cuandoPortal) + "</span>" +
           '<span class="hn-sub" style="margin:0">El proveedor la ve en su portal y responde allí; su respuesta queda como precio final.</span></div>'
         : '<div class="hn-row" style="margin-bottom:10px"><button class="hn-btn p" data-hn="portal">Enviar contrapropuesta al portal del proveedor</button>' +
-          '<span class="hn-sub" style="margin:0">Le llega un aviso y un correo, y responde sin Excel.' +
+          '<span class="hn-sub" style="margin:0">Le llega un aviso' + (window.__CORREO === false ? ' en su portal' : ' y un correo') + ', y responde sin Excel.' +
           (portal.envio_automatico
             ? " Si no la envías antes, sale sola el " + hnEsc(new Date(portal.envio_automatico).toLocaleString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }))
             : "") +
@@ -6261,7 +6266,7 @@
 
   async function hnEnviarPortal() {
     const info = await (await api("/api/negociacion/" + HN.negId + "/exportar?previsualizar=1")).json();
-    let texto = "Se enviarán " + info.total + " contrapropuesta(s) al portal de " + HN.hoja.negociacion.proveedor + ". El proveedor recibe un aviso y un correo.";
+    let texto = "Se enviarán " + info.total + " contrapropuesta(s) al portal de " + HN.hoja.negociacion.proveedor + ". El proveedor recibe un aviso" + (window.__CORREO === false ? " en su portal." : " y un correo.");
     if (info.alertas.length) {
       texto += "\n\nOjo: estas piden una baja de más de " + info.umbral_pct + " % (puede ser un error de presentación o de unidad):\n" +
         info.alertas.slice(0, 6).map((a) => "• " + a.producto + ": cotizó " + hnMoneda(a.cotizado) + ", contrapropuesta " + hnMoneda(a.contra) + " (baja " + String(a.bajaPct).replace(".", ",") + " %)").join("\n");
