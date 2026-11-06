@@ -50,10 +50,10 @@ function html(titulo, parrafos, boton) {
   // Colores del logo de Mercaldas: verde #038A41 y franja amarilla #FCF103
   return '<div style="font-family:Arial,Helvetica,sans-serif;background:#F3F5F0;padding:24px">' +
     '<div style="max-width:560px;margin:0 auto;background:#fff;border:1px solid #D9E0D5;border-radius:12px;overflow:hidden">' +
-    '<div style="background:#038A41;color:#fff;padding:16px 22px;font-size:17px;font-weight:700;font-style:italic">Mercaldas · Compras Fruver</div>' +
+    '<div style="background:#038A41;color:#fff;padding:16px 22px;font-size:17px;font-weight:700;font-style:italic">Mercaldas · Subastas Fruver</div>' +
     '<div style="background:#FCF103;height:6px;line-height:6px;font-size:0">&nbsp;</div>' +
     '<div style="padding:22px;color:#17251C;font-size:14px"><h2 style="margin:0 0 14px;font-size:18px;color:#02672F">' + esc(titulo) + "</h2>" + cuerpo + btn +
-    '<p style="margin:18px 0 0;font-size:12px;color:#56635A">Este es un mensaje automático del comparador de cotizaciones de Mercaldas. No respondas a este correo.</p>' +
+    '<p style="margin:18px 0 0;font-size:12px;color:#56635A">Este es un mensaje automático de Subastas Fruver de Mercaldas. No respondas a este correo.</p>' +
     "</div></div></div>";
 }
 

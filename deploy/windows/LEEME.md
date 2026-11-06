@@ -1,4 +1,4 @@
-# Despliegue en Windows Server: comparador.mercaldas-apps.com
+# Despliegue en Windows Server: Subastas Fruver (comparador.mercaldas-apps.com)
 
 La app corre como servicio de Windows (NSSM) con un **Node.js 20 portátil propio** y la base SQLite en `C:\planeacion\prod\datos`.
 Cloudflare Tunnel publica el dominio con HTTPS: no hace falta IIS, ni certificado en el servidor, ni abrir puertos.

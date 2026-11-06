@@ -5157,7 +5157,7 @@ app.get("/api/proveedores/excel", requireAdmin, async (req, res) => {
     const fechaHora = (iso) => (iso ? new Date(iso).toLocaleString("es-CO", { timeZone: "America/Bogota", dateStyle: "short", timeStyle: "short" }) : "");
     const ESTADO_CUENTA = { activo: "Activa", inactivo: "Inactiva", pendiente: "Pendiente de aprobación", rechazado: "Rechazada" };
     const wb = new ExcelJS.Workbook();
-    wb.creator = "Comparador de Cotizaciones Mercaldas";
+    wb.creator = "Subastas Fruver Mercaldas";
 
     const h1 = wb.addWorksheet("Proveedores");
     h1.columns = [
@@ -7219,5 +7219,5 @@ automatizacion.iniciar({
 // HOST=127.0.0.1 deja la app visible solo dentro del servidor (detrás de Cloudflare Tunnel o de un proxy)
 const HOST = process.env.HOST || undefined;
 app.listen(PORT, HOST, () => {
-  console.log(`Comparador de Cotizaciones escuchando en el puerto ${PORT}` + (HOST ? ` (solo ${HOST})` : ""));
+  console.log(`Subastas Fruver escuchando en el puerto ${PORT}` + (HOST ? ` (solo ${HOST})` : ""));
 });

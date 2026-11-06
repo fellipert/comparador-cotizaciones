@@ -221,10 +221,10 @@ function enviarEnlaceContrasena(fila, proposito) {
   const invitacion = proposito === "invitacion";
   return correo.enviar({
     para: fila.email,
-    asunto: invitacion ? "Tu acceso al comparador de cotizaciones de Mercaldas" : "Restablece tu contraseña · Mercaldas",
+    asunto: invitacion ? "Tu acceso a Subastas Fruver de Mercaldas" : "Restablece tu contraseña · Mercaldas",
     titulo: invitacion ? "Define tu contraseña" : "Restablecer contraseña",
     parrafos: invitacion
-      ? ["Hola " + nombre + ".", "Mercaldas creó tu acceso al comparador de cotizaciones. Tu usuario es: " + fila.usuario + ".",
+      ? ["Hola " + nombre + ".", "Mercaldas creó tu acceso a Subastas Fruver. Tu usuario es: " + fila.usuario + ".",
          "Usa el botón para definir tu contraseña. El enlace vence en " + INVITACION_HORAS + " horas y solo sirve una vez."]
       : ["Hola " + nombre + ".", "Recibimos una solicitud para restablecer la contraseña de tu cuenta (" + fila.usuario + ").",
          "Usa el botón para crear una contraseña nueva. El enlace vence en " + minutos + " minutos y solo sirve una vez.",
@@ -242,7 +242,7 @@ function avisarCambioPassword(fila) {
     parrafos: ["Hola " + (fila.nombre || fila.usuario) + ".", "La contraseña de tu cuenta (" + fila.usuario + ") se cambió el " +
       new Date().toLocaleString("es-CO", { timeZone: "America/Bogota" }) + ".",
       "Si no fuiste tú, recupera tu contraseña de inmediato y avisa al administrador de Mercaldas."],
-    boton: { texto: "Ir al comparador", url: correo.urlApp("/login.html") },
+    boton: { texto: "Ir a Subastas Fruver", url: correo.urlApp("/login.html") },
   });
 }
 
@@ -459,7 +459,7 @@ function registrarRutas(app) {
       titulo: "Un proveedor se registró en el portal",
       parrafos: ["Empresa: " + empresa, "Correo: " + email, nit ? "NIT: " + nit : "", contacto ? "Contacto: " + contacto : "", telefono ? "Teléfono: " + telefono : "",
         "Apruébalo en la pestaña Usuarios y vincúlalo al proveedor que corresponde, para que vea sus productos."].filter(Boolean),
-      boton: { texto: "Revisar en el comparador", url: correo.urlApp("/index.html") },
+      boton: { texto: "Revisar en Subastas Fruver", url: correo.urlApp("/index.html") },
     });
     correo.enviar({
       para: email,

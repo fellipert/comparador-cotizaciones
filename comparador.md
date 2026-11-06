@@ -1,4 +1,6 @@
-# Comparador de Cotizaciones - Mercaldas
+# Subastas Fruver - Mercaldas
+
+Antes se llamaba «Comparador de Cotizaciones»; desde el 2026-11-06 el nombre visible es **Subastas Fruver**. Los nombres internos (repositorio, carpetas, servicio `ComparadorMercaldas` y dominio `comparador.mercaldas-apps.com`) no cambiaron.
 
 Aplicación web interna para comparar cotizaciones de proveedores de frutas y verduras, negociar precios, distribuir el pedido por proveedor, emitir órdenes de compra en PDF y medir la gestión de compra.
 

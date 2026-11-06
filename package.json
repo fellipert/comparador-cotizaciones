@@ -1,7 +1,7 @@
 {
   "name": "comparador-cotizaciones",
   "version": "1.0.0",
-  "description": "Comparador de cotizaciones de proveedores con base de datos, para el Fruver Mercaldas",
+  "description": "Subastas Fruver: cotizaciones, subastas y negociación con proveedores del Fruver de Mercaldas",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

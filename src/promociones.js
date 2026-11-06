@@ -181,7 +181,7 @@ function calcular(cicloId, deps) {
 
 async function generarExcel(d) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Comparador de Cotizaciones Mercaldas";
+  wb.creator = "Subastas Fruver Mercaldas";
   const ws = wb.addWorksheet("Promociones");
   const prueba = process.env.APP_ENV === "dev" ? " (PRUEBAS)" : "";
   ws.mergeCells("A1:J1");

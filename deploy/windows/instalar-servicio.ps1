@@ -1,5 +1,6 @@
 ﻿<#
-  Instala el Comparador de Cotizaciones como servicio de Windows (con NSSM) y programa el respaldo diario de la base.
+  Instala Subastas Fruver (antes "Comparador de Cotizaciones") como servicio de Windows (con NSSM) y programa el respaldo diario de la base.
+  El servicio se sigue llamando ComparadorMercaldas por dentro (así lo usan los comandos); el nombre visible es "Subastas Fruver Mercaldas".
   Ejecutar en PowerShell COMO ADMINISTRADOR, desde la carpeta del proyecto. Ejemplo (pruebas, sin correo ni tareas automáticas):
 
     powershell -ExecutionPolicy Bypass -File deploy\windows\instalar-servicio.ps1 -Nssm C:\NSSM\nssm.exe `
@@ -87,8 +88,8 @@ if ($ocupado) {
 }
 & $Nssm install $Servicio $node "src\server.js" | Out-Null
 & $Nssm set $Servicio AppDirectory $carpeta | Out-Null
-& $Nssm set $Servicio DisplayName "Comparador de Cotizaciones Mercaldas" | Out-Null
-& $Nssm set $Servicio Description "Comparador de cotizaciones y portal de proveedores (Node.js). Datos en $Datos" | Out-Null
+& $Nssm set $Servicio DisplayName "Subastas Fruver Mercaldas" | Out-Null
+& $Nssm set $Servicio Description "Subastas Fruver: cotizaciones, subastas y portal de proveedores (Node.js). Datos en $Datos" | Out-Null
 & $Nssm set $Servicio Start SERVICE_AUTO_START | Out-Null
 
 $entorno = @(
