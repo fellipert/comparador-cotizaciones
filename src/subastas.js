@@ -226,7 +226,8 @@ const HORA_CIERRE_SEMANAL = cal.HORA_CIERRE;
 
 // La semana pide precio de todos los productos que tienen proveedor activo, desde el viernes a las 6:00 a.m. hasta el
 // cierre de la recepción. Cada proveedor solo recibe los suyos. Si la semana ya tiene una solicitud, no se crea otra.
-// Si se abre antes del viernes a las 6:00 a.m., la solicitud la envía sola automatizacion.js a esa hora.
+// Si el admin abre la semana antes del viernes, la solicitud sale en ese momento: los proveedores la ven de inmediato
+// en su portal (y el viernes a las 6:00 a.m. automatizacion.js ya no envía otra).
 function solicitudSemanal(ciclo, usuario, momento = new Date()) {
   if (db.prepare("SELECT 1 FROM subastas WHERE ciclo_id = ? LIMIT 1").get(ciclo.id)) {
     return { enviada: false, motivo: "La semana " + ciclo.id + " ya tiene una solicitud de cotización." };
@@ -234,13 +235,6 @@ function solicitudSemanal(ciclo, usuario, momento = new Date()) {
   const limite = leerFechaLimite(ciclo.fecha_fin_recepcion + "T" + HORA_CIERRE_SEMANAL);
   if (!limite || new Date(limite) <= momento) {
     return { enviada: false, motivo: "La recepción de " + ciclo.id + " ya cerró. Crea la solicitud en Subastas con un plazo nuevo." };
-  }
-  const apertura = cal.instante(ciclo.fecha_inicio_recepcion, cal.HORA_APERTURA);
-  if (momento < apertura && cal.tareasAutomaticasActivas()) {
-    return {
-      enviada: false, programada: true, apertura: apertura.toISOString(),
-      motivo: "La solicitud de cotización se enviará sola el " + fechaBogota(apertura.toISOString()) + " (hora de Colombia).",
-    };
   }
   const filas = db.prepare(`
     SELECT DISTINCT c.codigo, c.producto, c.presentacion

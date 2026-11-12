@@ -1003,7 +1003,7 @@
       "¿Abrir el ciclo " + codigo + "?\n\n" +
       "Las nuevas cotizaciones quedarán guardadas en esta semana.\n" +
       "Se enviará a todos los proveedores la solicitud de cotización de sus productos (aviso" + (window.__CORREO === false ? " en su portal" : " y correo") + "), " +
-      "con plazo hasta el lunes a las 7:00 p.m. Si la abres antes del viernes a las 6:00 a.m., la solicitud sale sola a esa hora.\n" +
+      "con plazo hasta el lunes a las 7:00 p.m. Les aparece de inmediato en su portal, aunque todavía no sea viernes.\n" +
       "De viernes a lunes, a las 7:00 p.m., cada proveedor recibe sola la contrapropuesta de lo que cotizó."
     )) {
       return;
