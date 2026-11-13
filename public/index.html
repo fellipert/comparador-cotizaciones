@@ -137,12 +137,26 @@
       <p class="section-title">Contrapropuesta</p>
       <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:-8px;">
         % que se descuenta al precio más bajo de la semana para la contrapropuesta. Ajústalo entre 1% y 10%.
-        Las contrapropuestas salen solas al portal de cada proveedor de viernes a lunes a las 7:00 p.m. con este %.
+        Las contrapropuestas salen al portal de cada proveedor solo cuando pulsas «Enviar contrapropuestas».
       </p>
       <div style="display:flex; align-items:center; gap:14px; margin-top:10px;">
         <input type="range" id="pctSlider" min="1" max="10" step="0.5" style="flex:1">
         <span id="pctValue" style="font-family:'IBM Plex Mono',monospace; font-weight:600; min-width:48px;">2.0%</span>
         <button class="btn-primary" id="btnSavePct">Guardar</button>
+      </div>
+      <div style="border-top:1px solid var(--border); margin-top:16px; padding-top:14px; display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:260px;">
+          <b>Enviar contrapropuestas</b> <span class="count" id="contraEnvioSemana">—</span>
+          <p id="contraEnvioResumen" style="color:var(--ink-soft); font-size:0.85rem; margin:4px 0 0;">Cargando…</p>
+          <details id="contraEnvioDetalle" style="display:none; margin-top:6px; font-size:0.85rem;">
+            <summary style="cursor:pointer; color:var(--ink-soft);">Ver proveedores</summary>
+            <ul id="contraEnvioLista" style="margin:6px 0 0; padding-left:18px;"></ul>
+          </details>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn-secondary" id="btnContraActualizar" title="Volver a revisar qué hay pendiente">Actualizar</button>
+          <button class="btn-primary" id="btnEnviarContra" disabled>Enviar contrapropuestas</button>
+        </div>
       </div>
     </div>
   </section>

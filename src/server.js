@@ -7210,7 +7210,7 @@ app.post(
 );
 
 
-// Viernes 6:00 a.m. abre la semana y envía la solicitud; de viernes a lunes a las 7:00 p.m. salen las contrapropuestas
+// Viernes 6:00 a.m. abre la semana y envía la solicitud (las contrapropuestas las envía el admin con su botón)
 automatizacion.iniciar({
   cicloActivo: () => obtenerCicloActivo(),
   cicloDeVentana: (v) => obtenerOCrearCicloPorSemana(v.anio, v.semana_calendario),

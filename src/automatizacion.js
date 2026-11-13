@@ -1,20 +1,16 @@
 "use strict";
-// Tareas automáticas de la semana (hora de Colombia). Se revisan cada minuto:
-//  1. Viernes 6:00 a.m.: abre la semana y envía la solicitud de cotización, si nadie lo hizo antes.
-//  2. Viernes a lunes, 7:00 p.m.: a cada proveedor con cuenta en el portal le llega la contrapropuesta de lo que
-//     cotizó y aún no se negociaba (precio más bajo de la semana menos el % de contrapropuesta que fija el admin).
-//     Lo que envíe después de las 7:00 p.m. sale en el envío del día siguiente; el último es el lunes a las 7:00 p.m.
-// Si el servidor estaba apagado a esa hora, lo hace apenas arranca, mientras la semana todavía no empiece a regir.
+// Tarea automática de la semana (hora de Colombia), revisada cada minuto: el viernes a las 6:00 a.m. abre la semana
+// y envía la solicitud de cotización, si el admin no lo hizo antes. Si el servidor estaba apagado a esa hora, lo hace
+// apenas arranca, mientras la recepción siga abierta.
+// Las contrapropuestas ya no salen solas: las envía el admin con el botón «Enviar contrapropuestas» (negociacion_hoja.js).
 const db = require("./db");
 const auth = require("./auth");
 const notificaciones = require("./notificaciones");
 const subastas = require("./subastas");
-const hoja = require("./negociacion_hoja");
 const cal = require("./calendario");
 const { calcularVentanaRecepcion } = require("./analytics");
 
 const SISTEMA = "sistema";
-const CLAVE_ULTIMO_CORTE = "contrapropuestas_auto_ultimo_corte";
 const CLAVE_APERTURA = "apertura_auto_ciclo";
 let deps = null;
 
@@ -65,68 +61,24 @@ function abrirSemanaSiToca(ahora) {
   return { ciclo: ciclo.id, solicitud };
 }
 
-// ---------- 2. Contrapropuestas a las 7:00 p.m. ----------
-function enviarContrapropuestas(cicloId) {
-  if (hoja.esquemaFaltante().length) return { ciclo: cicloId, proveedores: [], productos: 0, error: "Faltan las tablas de negociación." };
-  const quotes = db.prepare("SELECT * FROM quotes WHERE ciclo_id = ?").all(cicloId);
-  const conCuenta = subastas.proveedoresConCuenta();
-  const proveedores = [...new Set(quotes.map((q) => q.proveedor))].filter((p) => conCuenta.has(notificaciones.clave(p)));
-  const observacion = "Contrapropuesta automática de las 7:00 p.m. (" + String(hoja.pctContrapropuesta()).replace(".", ",") + " % bajo el mejor precio).";
-  const resultado = { ciclo: cicloId, proveedores: [], productos: 0 };
-  for (const proveedor of proveedores.sort((a, b) => a.localeCompare(b, "es"))) {
-    try {
-      const r = hoja.contraproponerAutomatico(cicloId, proveedor, quotes, SISTEMA, observacion);
-      if (r.productos) {
-        resultado.proveedores.push(proveedor + " (" + r.productos + ")");
-        resultado.productos += r.productos;
-      }
-    } catch (e) {
-      console.error("[automático] contrapropuesta de " + proveedor + ":", e);
-    }
-  }
-  if (resultado.productos) {
-    const n = resultado.proveedores.length;
-    auth.bitacora(null, "contrapropuestas_automaticas", cicloId + " · " + resultado.proveedores.join(", "), SISTEMA);
-    notificaciones.paraTipo("admin", {
-      tipo: "contrapropuesta",
-      titulo: "Contrapropuestas enviadas: " + n + " proveedor" + (n === 1 ? "" : "es") + ", " + resultado.productos + " producto(s)",
-      mensaje: "Semana " + cicloId + " · " + resultado.proveedores.join(", ") + ".",
-      enlace: "hoja-negociacion",
-    });
-    console.log("[automático] Contrapropuestas " + cicloId + ": " + resultado.proveedores.join(", "));
-  }
-  return resultado;
-}
-
-function enviarContrapropuestasSiToca(ahora) {
-  const corte = cal.ultimoCorte(ahora);
-  if (!corte) return null;
-  const ultimo = leerSetting(CLAVE_ULTIMO_CORTE);
-  if (ultimo && ultimo >= corte.instante) return null;
-  // El corte queda marcado aunque algo falle, para no repetir avisos cada minuto
-  guardarSetting(CLAVE_ULTIMO_CORTE, corte.instante);
-  return Object.assign({ corte: corte.instante }, enviarContrapropuestas(corte.ciclo_id));
-}
-
 function revisar(ahora = new Date()) {
   if (!deps) throw new Error("automatizacion.iniciar() no se ha llamado");
-  let apertura = null, contrapropuestas = null;
+  let apertura = null;
   try { apertura = abrirSemanaSiToca(ahora); } catch (e) { console.error("[automático] apertura:", e); }
-  try { contrapropuestas = enviarContrapropuestasSiToca(ahora); } catch (e) { console.error("[automático] contrapropuestas:", e); }
-  return { apertura, contrapropuestas };
+  return { apertura };
 }
 
 // deps: cicloActivo() y cicloDeVentana(ventana) vienen de server.js
 function iniciar(d) {
   deps = d;
   if (!cal.tareasAutomaticasActivas()) {
-    console.log("Tareas automáticas apagadas (APP_ENV=dev o TAREAS_AUTOMATICAS=0): la semana y las contrapropuestas se envían a mano.");
+    console.log("Tareas automáticas apagadas (APP_ENV=dev o TAREAS_AUTOMATICAS=0): la semana se abre a mano.");
     return;
   }
   const tick = () => revisar(new Date());
   setTimeout(tick, 5000).unref();
   setInterval(tick, 60 * 1000).unref();
-  console.log("Tareas automáticas: solicitud el viernes 6:00 a.m. y contrapropuestas de viernes a lunes a las 7:00 p.m. (hora de Colombia)");
+  console.log("Tarea automática: apertura de la semana y solicitud el viernes 6:00 a.m. (hora de Colombia). Las contrapropuestas las envía el admin.");
 }
 
-module.exports = { iniciar, revisar, enviarContrapropuestas };
+module.exports = { iniciar, revisar };

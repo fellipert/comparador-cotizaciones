@@ -119,16 +119,6 @@
     return h < 48 ? "cierra en " + h + " h" : "cierra en " + Math.floor(h / 24) + " días";
   }
 
-  // "hoy a las 7:00 p. m.", "mañana a las 7:00 p. m." o "el sábado, 7 de nov. a las 7:00 p. m." (hora de Colombia)
-  function cuandoLlega(iso) {
-    const d = new Date(iso);
-    const dia = (x) => x.toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
-    const hora = d.toLocaleTimeString("es-CO", { timeZone: "America/Bogota", hour: "numeric", minute: "2-digit" });
-    const cuando = dia(d) === dia(new Date()) ? "hoy" : dia(d) === dia(new Date(Date.now() + 86400000)) ? "mañana"
-      : "el " + d.toLocaleDateString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "short" });
-    return cuando + " a las " + hora;
-  }
-
   function irA(seccion) {
     P.seccion = seccion;
     document.querySelectorAll(".secciones button").forEach((b) => b.classList.toggle("activa", b.dataset.seccion === seccion));
@@ -158,12 +148,11 @@
       const cotizables = s.productos.filter((p) => !p.en_negociacion);
       const conPrecio = cotizables.filter((p) => p.oferta).length;
       const negociados = s.productos.filter((p) => p.en_negociacion).length;
-      const llega = s.contrapropuesta_auto ? cuandoLlega(s.contrapropuesta_auto) : null;
       const verContra = 'Revisa la pestaña <a href="#" data-ir="contrapropuestas">Contrapropuestas</a>';
       let estadoTexto = "";
-      if (negociados && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya te envió la contrapropuesta de ' + negociados + " producto(s). " + verContra + ". Puedes seguir cotizando los demás" + (llega ? "; de lo nuevo te llega la contrapropuesta " + esc(llega) : ".") + "</div>";
+      if (negociados && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya te envió la contrapropuesta de ' + negociados + " producto(s). " + verContra + ". Puedes seguir cotizando los demás; de lo nuevo te llegará otra contrapropuesta.</div>";
       else if (negociados || s.negociacion_iniciada) estadoTexto = '<div class="nota" style="margin-bottom:12px">Mercaldas ya está negociando tu propuesta de esta semana. ' + verContra + ".</div>";
-      else if (s.respondido_en && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + "." + (llega ? " Puedes ajustarla hasta " + esc(llega) + ", cuando Mercaldas te envía su contrapropuesta." : " Puedes ajustarla hasta el cierre.") + "</div>";
+      else if (s.respondido_en && editable) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + ". Puedes ajustarla hasta que Mercaldas te envíe su contrapropuesta.</div>";
       else if (s.respondido_en) estadoTexto = '<div class="nota" style="margin-bottom:12px">✓ Enviaste tu propuesta el ' + esc(fecha(s.respondido_en)) + ".</div>";
       else if (!editable) estadoTexto = '<div class="nota alerta" style="margin-bottom:12px">Esta solicitud ya no recibe propuestas.</div>';
       const filas = s.productos.map((p) => {
@@ -187,8 +176,7 @@
         estadoTexto +
         '<div class="table-scroll"><table><thead><tr><th>PLU</th><th>Producto</th><th>Presentación</th><th class="celda-num">Cant. estimada</th><th>Precio unitario</th><th>Disponibilidad</th><th>Observación</th></tr></thead><tbody>' + filas + "</tbody></table></div>" +
         (editable
-          ? '<div class="pie"><span class="texto-suave">Escribe el precio en pesos por unidad de la presentación. Deja vacío lo que no vas a ofertar. <b data-cuenta>' + conPrecio + " de " + cotizables.length + "</b> con precio." +
-            (llega ? " Mercaldas te envía su contrapropuesta " + esc(llega) : "") + "</span>" +
+          ? '<div class="pie"><span class="texto-suave">Escribe el precio en pesos por unidad de la presentación. Deja vacío lo que no vas a ofertar. <b data-cuenta>' + conPrecio + " de " + cotizables.length + "</b> con precio. Puedes ajustarlo hasta que Mercaldas te envíe su contrapropuesta.</span>" +
             '<button class="btn-primary" data-enviar="' + s.id + '">' + (s.respondido_en ? "Actualizar propuesta" : "Enviar propuesta") + "</button></div>"
           : "") +
         "</div>";
@@ -209,9 +197,7 @@
     if (malos.length) { toast("Revisa los precios: escribe solo números enteros en pesos, sin puntos ni signos."); return; }
     if (!conPrecio.length && !confirm("No escribiste ningún precio. ¿Quieres retirar tu propuesta de esta solicitud?")) return;
     const s = P.datos.subastas.find((x) => String(x.id) === String(id));
-    const ajuste = s && s.contrapropuesta_auto
-      ? "Puedes ajustarlo hasta " + cuandoLlega(s.contrapropuesta_auto) + ", cuando Mercaldas te envía su contrapropuesta."
-      : "Puedes ajustarlo hasta el cierre.";
+    const ajuste = "Puedes ajustarlo hasta que Mercaldas te envíe su contrapropuesta.";
     if (conPrecio.length && !confirm("Vas a enviar precio de " + conPrecio.length + " producto(s). " + ajuste + " ¿Enviar?")) return;
     boton.disabled = true;
     try {
@@ -231,7 +217,7 @@
     $("cuentaContra").textContent = pendientes;
     $("cuentaContra").classList.toggle("alerta", pendientes > 0);
     if (!lista.length) {
-      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Mercaldas envía las contrapropuestas a las 7:00 p.m. de los días en que la solicitud está abierta (viernes a lunes). Te llegará un aviso ' + DONDE_AVISO + '.</p></div>';
+      $("secContrapropuestas").innerHTML = '<div class="card vacio"><div class="icono">🤝</div><b>Aún no tienes contrapropuestas.</b><p class="texto-suave">Cuando Mercaldas revise tu propuesta y te envíe su contrapropuesta, te llegará un aviso ' + DONDE_AVISO + '.</p></div>';
       return;
     }
     $("secContrapropuestas").innerHTML = lista.map((n) => {
@@ -252,7 +238,7 @@
           }).join("") + "</tbody></table></div>" +
           '<div class="pie"><button class="btn-secondary" data-aceptar-todo="' + n.id + '">Aceptar todas</button><button class="btn-primary" data-responder="' + n.id + '">Enviar respuesta</button></div>';
       } else if (n.en_revision) {
-        html += '<div class="nota">Mercaldas está revisando tu propuesta (' + n.en_revision + " producto(s)). Te avisaremos cuando te envíe la contrapropuesta (sale a las 7:00 p.m.).</div>";
+        html += '<div class="nota">Mercaldas está revisando tu propuesta (' + n.en_revision + " producto(s)). Te avisaremos cuando te envíe la contrapropuesta.</div>";
       }
       if (n.cerrados.length) {
         html += '<p class="section-title" style="margin:18px 0 10px;font-size:0.95rem">Precios acordados</p><div class="table-scroll"><table><thead><tr><th>Producto</th><th class="celda-num">Cotizaste</th><th class="celda-num">Precio final</th><th>Estado</th></tr></thead><tbody>' +

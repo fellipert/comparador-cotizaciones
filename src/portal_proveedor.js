@@ -2,7 +2,7 @@
 // Portal del proveedor: todo lo que antes hacía con Excel, directo en la plataforma.
 //  - Ve las subastas abiertas con SOLO sus productos parametrizados y envía su propuesta de precio.
 //  - Ve las contrapropuestas que Mercaldas le envió y responde: acepta, mantiene su precio o propone uno intermedio.
-//    Salen solas a las 7:00 p.m. (automatizacion.js); lo que ya tiene contrapropuesta no se cambia desde la solicitud.
+//    Las envía el admin cuando lo decide; lo que ya tiene contrapropuesta no se cambia desde la solicitud.
 //  - Agrega a su stock productos del catálogo de Mercaldas, fijos (habitual) o temporales hasta una fecha (adicional).
 // Cada consulta se filtra por el proveedor de la sesión: nunca ve datos de otros proveedores.
 const crypto = require("crypto");
@@ -11,7 +11,6 @@ const auth = require("./auth");
 const notificaciones = require("./notificaciones");
 const subastas = require("./subastas");
 const hoja = require("./negociacion_hoja");
-const cal = require("./calendario");
 
 const ahora = () => new Date().toISOString();
 const DIAS_HISTORIAL = 30;
@@ -103,7 +102,6 @@ function subastasDelProveedor(proveedor) {
       negociacion_iniciada: !!negociacion,
       // Lo que ya entró a negociación se responde en Contrapropuestas; lo demás se puede seguir cotizando
       puede_ofertar: recibe && productos.some((p) => !negociados.has(String(p.codigo))),
-      contrapropuesta_auto: recibe ? cal.proximoCorte(s.ciclo_id) : null,
       productos: productos.map((p) => {
         const o = ofertas.get(String(p.codigo));
         const rel = mios.get(String(p.codigo));

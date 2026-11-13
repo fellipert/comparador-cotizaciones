@@ -1004,7 +1004,7 @@
       "Las nuevas cotizaciones quedarán guardadas en esta semana.\n" +
       "Se enviará a todos los proveedores la solicitud de cotización de sus productos (aviso" + (window.__CORREO === false ? " en su portal" : " y correo") + "), " +
       "con plazo hasta el lunes a las 7:00 p.m. Les aparece de inmediato en su portal, aunque todavía no sea viernes.\n" +
-      "De viernes a lunes, a las 7:00 p.m., cada proveedor recibe sola la contrapropuesta de lo que cotizó."
+      "Las contrapropuestas salen solo cuando pulses «Enviar contrapropuestas» (en esta pestaña, tarjeta Contrapropuesta)."
     )) {
       return;
     }
@@ -1284,12 +1284,78 @@
     if (isNaN(n)) return;
     document.querySelectorAll(".js-pct").forEach((el) => { el.textContent = String(n); });
   }
+  let pctGuardado = null;
   async function loadSettings() {
     const s = await (await api("/api/settings")).json();
+    pctGuardado = Number(s.contrapropuestaPct);
     document.getElementById("pctSlider").value = s.contrapropuestaPct;
     document.getElementById("pctValue").textContent = s.contrapropuestaPct.toFixed(1) + "%";
     actualizarTextosPct(s.contrapropuestaPct);
+    cargarPreviaContra();
   }
+
+  // ---------- botón «Enviar contrapropuestas»: el admin decide cuándo salen ----------
+  const pctTexto = (n) => String(n).replace(".", ",") + " %";
+  const plural = (n, uno, varios) => n + " " + (n === 1 ? uno : varios);
+  const escContra = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  let previaContra = null;
+  async function cargarPreviaContra() {
+    const resumen = document.getElementById("contraEnvioResumen");
+    const boton = document.getElementById("btnEnviarContra");
+    if (!resumen || !boton) return;
+    boton.disabled = true;
+    try {
+      const p = await (await api("/api/contrapropuestas/previa")).json();
+      previaContra = p;
+      document.getElementById("contraEnvioSemana").textContent = p.ciclo || "Sin semana";
+      const sinCuenta = p.sin_cuenta && p.sin_cuenta.length
+        ? " " + plural(p.sin_cuenta.length, "proveedor", "proveedores") + " sin cuenta en el portal (" + plural(p.productos_sin_cuenta, "producto", "productos") + ") " + (p.sin_cuenta.length === 1 ? "se negocia" : "se negocian") + " a mano en la Hoja de negociación."
+        : "";
+      if (!p.ciclo) resumen.textContent = "No hay una semana abierta.";
+      else if (!p.productos) resumen.textContent = "No hay productos cotizados esperando contrapropuesta." + sinCuenta;
+      else resumen.textContent = plural(p.proveedores.length, "proveedor tiene", "proveedores tienen") + " " + plural(p.productos, "producto cotizado", "productos cotizados") +
+        " sin contrapropuesta. Cada uno la recibe en su portal con el " + pctTexto(p.pct) + " bajo el mejor precio de la semana." + sinCuenta;
+      const lista = (p.proveedores || []).map((x) => "<li>" + escContra(x.proveedor) + ": " + plural(x.productos, "producto", "productos") + "</li>").join("") +
+        (p.sin_cuenta || []).map((x) => '<li style="color:var(--ink-soft)">' + escContra(x.proveedor) + ": " + plural(x.productos, "producto", "productos") + " (sin cuenta, a mano)</li>").join("");
+      document.getElementById("contraEnvioLista").innerHTML = lista;
+      document.getElementById("contraEnvioDetalle").style.display = lista ? "" : "none";
+      boton.disabled = !p.productos;
+    } catch (err) {
+      previaContra = null;
+      resumen.textContent = "No se pudo revisar qué hay pendiente: " + err.message;
+    }
+  }
+  document.getElementById("btnContraActualizar").addEventListener("click", cargarPreviaContra);
+  document.querySelectorAll('nav.tabs button[data-tab="cargar"]').forEach((b) => b.addEventListener("click", cargarPreviaContra));
+  document.getElementById("btnEnviarContra").addEventListener("click", async () => {
+    const boton = document.getElementById("btnEnviarContra");
+    const p = previaContra;
+    if (!p || !p.productos) return;
+    const enPantalla = Number(document.getElementById("pctSlider").value);
+    if (pctGuardado != null && enPantalla !== pctGuardado) {
+      toast("Guarda primero el % de contrapropuesta: está en " + pctTexto(enPantalla) + " pero el guardado es " + pctTexto(pctGuardado) + ".");
+      return;
+    }
+    if (!confirm(
+      "¿Enviar las contrapropuestas de la semana " + p.ciclo + "?\n\n" +
+      plural(p.proveedores.length, "proveedor", "proveedores") + " · " + plural(p.productos, "producto", "productos") + " · " + pctTexto(p.pct) + " bajo el mejor precio de la semana.\n" +
+      "Cada proveedor recibe un aviso en su portal y responde allí; su respuesta queda como precio final.\n" +
+      "Lo que ya tenía contrapropuesta no cambia."
+    )) return;
+    boton.disabled = true;
+    try {
+      const r = await (await api("/api/contrapropuestas/enviar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ciclo: p.ciclo }),
+      })).json();
+      toast("Contrapropuestas enviadas a " + plural(r.proveedores.length, "proveedor", "proveedores") + " (" + plural(r.productos, "producto", "productos") + ")." +
+        (r.fallidos && r.fallidos.length ? " No se pudo con: " + r.fallidos.join(", ") + "." : ""));
+    } catch (err) {
+      toast("No se enviaron: " + err.message);
+    }
+    await cargarPreviaContra();
+  });
   document.getElementById("pctSlider").addEventListener("input", (e) => {
     document.getElementById("pctValue").textContent = Number(e.target.value).toFixed(1) + "%";
   });
@@ -6235,9 +6301,6 @@
           '<span class="hn-sub" style="margin:0">El proveedor la ve en su portal y responde allí; su respuesta queda como precio final.</span></div>'
         : '<div class="hn-row" style="margin-bottom:10px"><button class="hn-btn p" data-hn="portal">Enviar contrapropuesta al portal del proveedor</button>' +
           '<span class="hn-sub" style="margin:0">Le llega un aviso' + (window.__CORREO === false ? ' en su portal' : ' y un correo') + ', y responde sin Excel.' +
-          (portal.envio_automatico
-            ? " Si no la envías antes, sale sola el " + hnEsc(new Date(portal.envio_automatico).toLocaleString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }))
-            : "") +
           "</span></div>";
     const barraEdicion = '<div class="hn-card"><div class="hn-row"><b>Modo edición:</b> escribe el precio final acordado en cada producto y pulsa Guardar.' +
       '<input id="hnNota" type="text" maxlength="300" placeholder="Nota (opcional): ej. acordado por teléfono con Juan" style="flex:1;min-width:260px;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +

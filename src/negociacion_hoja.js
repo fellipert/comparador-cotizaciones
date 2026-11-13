@@ -2,9 +2,10 @@
 const ExcelJS = require("exceljs");
 const multer = require("multer");
 const db = require("./db");
+const auth = require("./auth");
 const correo = require("./correo");
 const notificaciones = require("./notificaciones");
-const cal = require("./calendario");
+const subastas = require("./subastas");
 const { computeVistaProveedor } = require("./analytics");
 const { leerRespuesta, validar, alertasContrapropuesta } = require("./negociacion_lector");
 
@@ -122,8 +123,6 @@ function armarHoja(neg) {
     publicado,
     publicado_en: pub ? pub.publicado_en : null,
     por_responder: pub ? esperando.filter((f) => f.ultimaRonda <= pub.ronda).length : 0,
-    // Si nadie la envía antes, sale sola a esta hora (7:00 p.m. de los días de recepción)
-    envio_automatico: rondaPendiente && !publicado ? cal.proximoCorte(neg.ciclo_id) : null,
   };
   return {
     negociacion: { id: neg.id, ciclo: neg.ciclo_id, proveedor: neg.proveedor, estado: neg.estado, ronda_visible: Math.max(1, Math.floor(maxRonda / 2)), max_rondas: MAX_RONDAS, portal },
@@ -239,15 +238,75 @@ function publicarEnPortal(neg, publicadoPor, yaVisibles) {
   return { productos: n, usuarios: usuarios.length, correos: correos.length };
 }
 
-// Envío automático: suma a la negociación de la semana lo que el proveedor cotizó y aún no se negociaba,
-// con la contrapropuesta del sistema, y publica en su portal todo lo que espera su respuesta.
-function contraproponerAutomatico(cicloId, proveedor, quotes, publicadoPor, observacion) {
-  let neg = db.prepare("SELECT * FROM negociaciones_unificadas WHERE ciclo_id = ? AND proveedor = ?").get(cicloId, proveedor);
-  const yaVisibles = neg ? visiblesEnPortal(neg) : new Set();
+// ---------- Botón «Enviar contrapropuestas» (las envía el admin cuando lo decide) ----------
+const negociacionDe = (cicloId, proveedor) =>
+  db.prepare("SELECT * FROM negociaciones_unificadas WHERE ciclo_id = ? AND proveedor = ?").get(cicloId, proveedor) || null;
+
+// PLU que el proveedor cotizó en la semana y todavía no tienen contrapropuesta
+function sinContrapropuesta(neg, quotes, proveedor) {
   const enNegociacion = neg
     ? new Set(db.prepare("SELECT codigo FROM negociacion_unificada_productos WHERE negociacion_id = ?").all(neg.id).map((r) => String(r.codigo)))
     : new Set();
-  const nuevos = itemsContrapropuesta(quotes, proveedor).filter((i) => !enNegociacion.has(i.codigo) && i.inicial > 0 && i.contra > 0);
+  return itemsContrapropuesta(quotes, proveedor).filter((i) => !enNegociacion.has(i.codigo) && i.inicial > 0 && i.contra > 0);
+}
+
+// Contrapropuestas que esperan la respuesta del proveedor pero él todavía no ve (p. ej. escritas en la hoja sin enviarlas)
+function sinPublicar(neg) {
+  if (!neg) return 0;
+  const visibles = visiblesEnPortal(neg);
+  return armarHoja(neg).productos.filter((p) => p.estado === "abierto" && p.turno === "proveedor" && !visibles.has(String(p.codigo))).length;
+}
+
+// Semana de las contrapropuestas: la indicada, si no la activa (recepción) y si no la semana de trabajo
+function cicloParaContrapropuestas(cicloId) {
+  const leer = (k) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(k) || {}).value || null;
+  const id = String(cicloId || "").trim() || leer("ciclo_activo_id") || leer("semana_trabajo_id");
+  return id ? db.prepare("SELECT * FROM ciclos WHERE id = ?").get(id) || null : null;
+}
+
+// Qué saldría si el admin pulsa el botón: por proveedor con cuenta en el portal, cuántos productos le llegan
+function previaContrapropuestas(cicloId) {
+  const quotes = db.prepare("SELECT * FROM quotes WHERE ciclo_id = ?").all(cicloId);
+  const conCuenta = subastas.proveedoresConCuenta();
+  const proveedores = [], sinCuenta = [];
+  for (const proveedor of [...new Set(quotes.map((q) => q.proveedor))].sort((a, b) => a.localeCompare(b, "es"))) {
+    const neg = negociacionDe(cicloId, proveedor);
+    const productos = sinContrapropuesta(neg, quotes, proveedor).length + sinPublicar(neg);
+    if (!productos) continue;
+    (conCuenta.has(notificaciones.clave(proveedor)) ? proveedores : sinCuenta).push({ proveedor, productos });
+  }
+  const suma = (l) => l.reduce((a, x) => a + x.productos, 0);
+  return { ciclo: cicloId, pct: pctContrapropuesta(), proveedores, productos: suma(proveedores), sin_cuenta: sinCuenta, productos_sin_cuenta: suma(sinCuenta) };
+}
+
+// Envía la contrapropuesta del sistema a cada proveedor con cuenta en el portal que tenga algo pendiente
+function enviarContrapropuestas(cicloId, usuario) {
+  const quotes = db.prepare("SELECT * FROM quotes WHERE ciclo_id = ?").all(cicloId);
+  const conCuenta = subastas.proveedoresConCuenta();
+  const proveedores = [...new Set(quotes.map((q) => q.proveedor))].filter((p) => conCuenta.has(notificaciones.clave(p)));
+  const observacion = "Contrapropuesta de Mercaldas (" + String(pctContrapropuesta()).replace(".", ",") + " % bajo el mejor precio de la semana).";
+  const resultado = { ciclo: cicloId, proveedores: [], productos: 0, fallidos: [] };
+  for (const proveedor of proveedores.sort((a, b) => a.localeCompare(b, "es"))) {
+    try {
+      const r = contraproponerProveedor(cicloId, proveedor, quotes, usuario, observacion);
+      if (r.productos) {
+        resultado.proveedores.push({ proveedor, productos: r.productos });
+        resultado.productos += r.productos;
+      }
+    } catch (e) {
+      console.error("[contrapropuestas] " + proveedor + ":", e);
+      resultado.fallidos.push(proveedor);
+    }
+  }
+  return resultado;
+}
+
+// Suma a la negociación de la semana lo que el proveedor cotizó y aún no se negociaba, con la contrapropuesta
+// del sistema, y publica en su portal todo lo que espera su respuesta.
+function contraproponerProveedor(cicloId, proveedor, quotes, publicadoPor, observacion) {
+  let neg = negociacionDe(cicloId, proveedor);
+  const yaVisibles = neg ? visiblesEnPortal(neg) : new Set();
+  const nuevos = sinContrapropuesta(neg, quotes, proveedor);
   if (nuevos.length) {
     const id = db.transaction(() => {
       const negId = neg ? neg.id : crearNegociacion(cicloId, proveedor, nuevos, observacion);
@@ -541,6 +600,36 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
     }
   });
 
+  // Botón «Enviar contrapropuestas»: primero muestra qué saldría y luego lo envía (solo cuando el admin lo decide)
+  app.get("/api/contrapropuestas/previa", requireAdmin, (req, res) => {
+    try {
+      const ciclo = cicloParaContrapropuestas(req.query.ciclo);
+      if (!ciclo) return res.json({ ciclo: null, pct: pctContrapropuesta(), proveedores: [], productos: 0, sin_cuenta: [], productos_sin_cuenta: 0 });
+      res.json(previaContrapropuestas(ciclo.id));
+    } catch (e) {
+      console.error("[negociacion_hoja] previa contrapropuestas:", e);
+      res.status(500).json({ error: "No se pudo revisar qué contrapropuestas hay pendientes." });
+    }
+  });
+
+  app.post("/api/contrapropuestas/enviar", requireAdmin, (req, res) => {
+    try {
+      const ciclo = cicloParaContrapropuestas(req.body && req.body.ciclo);
+      if (!ciclo) return res.status(400).json({ error: "No hay una semana abierta para enviar contrapropuestas." });
+      const r = enviarContrapropuestas(ciclo.id, req.usuarioActual ? req.usuarioActual.usuario : null);
+      if (!r.productos) {
+        return res.status(400).json({ error: r.fallidos.length ? "No se pudo enviar a: " + r.fallidos.join(", ") + "." : "No hay productos cotizados esperando contrapropuesta en " + ciclo.id + "." });
+      }
+      const detalle = r.proveedores.map((p) => p.proveedor + " (" + p.productos + ")").join(", ");
+      auth.bitacora(req, "contrapropuestas_enviadas", ciclo.id + " · " + pctContrapropuesta() + " % · " + detalle);
+      console.log("[contrapropuestas] " + ciclo.id + ": " + detalle);
+      res.json(Object.assign({ ok: true }, r));
+    } catch (e) {
+      console.error("[negociacion_hoja] enviar contrapropuestas:", e);
+      res.status(500).json({ error: "No se pudieron enviar las contrapropuestas." });
+    }
+  });
+
   app.get("/api/negociacion/:id/exportar", requireAdmin, async (req, res) => {
     try {
       const neg = negociacionPorId(req.params.id);
@@ -566,5 +655,5 @@ module.exports = function registrarNegociacionHoja(app, requireAdmin) {
 // Para el portal del proveedor
 Object.assign(module.exports, {
   armarHoja, negociacionPorId, aplicarRespuestas, rondaPublicada, esquemaFaltante,
-  itemsContrapropuesta, crearNegociacion, contraproponerAutomatico, publicarEnPortal, pctContrapropuesta,
+  itemsContrapropuesta, crearNegociacion, publicarEnPortal, pctContrapropuesta, previaContrapropuestas, enviarContrapropuestas,
 });
